@@ -1,0 +1,64 @@
+buildscript {
+    repositories {
+        jcenter()
+    }
+    dependencies {
+        classpath("com.apollographql.apollo:apollo-gradle-plugin:2.0.0")
+    }
+}
+
+plugins {
+    id 'java'
+    id 'application'
+    id 'com.apollographql.apollo' version '2.0.0'
+}
+
+repositories {
+    mavenCentral()
+    jcenter()
+    mavenLocal()
+}
+
+
+
+dependencies {
+    // testCompile group: 'junit', name: 'junit', version: '4.12'
+
+    // AWS
+    implementation platform('software.amazon.awssdk:bom:2.13.13')
+    implementation 'software.amazon.awssdk:sqs'
+    implementation 'software.amazon.awssdk:regions'
+    implementation 'software.amazon.awssdk:auth'
+
+    // MOEA
+    compile 'org.moeaframework:moeaframework:2.12'
+
+    // RABBIT-MQ
+    compile 'com.rabbitmq:amqp-client:5.7.3'
+
+    // GSON
+    compile 'com.google.code.gson:gson:2.8.5'
+
+    // GRAPHQL
+    implementation 'com.apollographql.apollo:apollo-runtime:2.0.0'
+    implementation 'com.apollographql.apollo:apollo-rx2-support:2.0.0'
+    compileOnly("org.jetbrains:annotations:13.0")
+    testCompileOnly("org.jetbrains:annotations:13.0")
+
+    // SYSTEM ARCHITECTURE PROBLEMS
+    compile 'seakers:system-architecture-problems:1.0'
+
+    // THRIFT
+    compile 'org.apache.thrift:libthrift:0.12.0'
+
+
+}
+
+group 'seakers'
+version 'beta'
+
+
+
+application {
+    mainClassName = 'app.App'
+}

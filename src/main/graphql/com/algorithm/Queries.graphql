@@ -1,0 +1,45 @@
+
+
+
+
+
+query Orbit($problem_id: Int!){
+    items: Join__Orbit_Attribute(where: {problem_id: {_eq: $problem_id}}, distinct_on: [orbit_id]) {
+        id
+        Problem {
+            name
+        }
+        orbit: Orbit {
+            name
+        }
+    }
+}
+
+
+
+query ArchitectureSubscription($problem_id: Int!, $input: String!){
+    items: Architecture_aggregate(where: {problem_id: {_eq: $problem_id}, input: {_eq: $input}})  {
+        aggregate { count }
+    }
+}
+
+
+
+query SingleArchitecture($problem_id: Int!, $input: String!) {
+    items: Architecture (where: {problem_id: {_eq: $problem_id}, input: {_eq: $input}})  {
+        id input science cost
+    }
+}
+
+
+
+
+
+query Architecture($problem_id: Int!) {
+    items: Architecture(where: {problem_id: {_eq: $problem_id}}) {
+        id
+        input
+        science
+        cost
+    }
+}
