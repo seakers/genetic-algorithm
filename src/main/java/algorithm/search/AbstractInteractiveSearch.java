@@ -32,6 +32,9 @@ public abstract class AbstractInteractiveSearch implements Callable<org.moeafram
         receiveQueue = id + "_brainga";
         sendQueue = id + "_gabrain";
 
+        System.out.println("---> Send brain msg queue: " +  sendQueue);
+        System.out.println("---> Receive queue: " +  receiveQueue);
+
         ConnectionFactory factory = new ConnectionFactory();
         factory.setHost(System.getenv("RABBITMQ_HOST"));
         try  {
@@ -96,21 +99,28 @@ public abstract class AbstractInteractiveSearch implements Callable<org.moeafram
                 break;
             }
 
+            System.out.println("\n\n---> Algorithm Step");
             alg.step();
+
+            System.out.println("\n\n---> Get population");
             Population pop = ((AbstractEvolutionaryAlgorithm) alg).getPopulation();
 
             // Only send back those architectures that improve the pareto frontier
+            System.out.println("\n\n---> Get new population");
             Population newArchive = ((AbstractEvolutionaryAlgorithm)alg).getArchive();
 
             // GABE: this loop process the new architecture from the GA through rabbitmq
+            System.out.println("\n\n---> Compare new to old population");
             for (int i = 0; i < newArchive.size(); ++i) {
 
                 // Check to see if we have a new solution
                 Solution newSol = newArchive.get(i);
                 boolean alreadyThere = archive.contains(newSol);
                 if (!alreadyThere) { // if it is a new solution
-                    System.out.println("Sending new arch!");
+                    System.out.println("---> Sending new arch!");
                     newSol.setAttribute("NFE", alg.getNumberOfEvaluations());
+
+
                     // Send the new architectures through REDIS
                     // But first, turn it into something easier in JSON
                     JsonElement jsonArch = getJSONArchitecture(newSol);
@@ -123,6 +133,10 @@ public abstract class AbstractInteractiveSearch implements Callable<org.moeafram
                     catch (IOException e) {
                         e.printStackTrace();
                     }
+                }
+                else{
+                    System.out.println("---> Architecture already there");
+                    System.out.println("---> newArchive (size): "+ newArchive.size());
                 }
             }
 

@@ -128,6 +128,12 @@ public class AssigningProblem extends AbstractProblem implements SystemArchitect
                         .stringValue(input)
                         .build()
         );
+        messageAttributes.put("ga",
+                MessageAttributeValue.builder()
+                        .dataType("String")
+                        .stringValue("true")
+                        .build()
+        );
         System.out.println("---> Processing architecure");
         this.sqs.sendMessage(SendMessageRequest.builder()
                                             .queueUrl(this.queueUrl)
