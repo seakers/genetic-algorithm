@@ -39,11 +39,11 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 public final class ArchitectureQuery implements Query<ArchitectureQuery.Data, ArchitectureQuery.Data, ArchitectureQuery.Variables> {
-  public static final String OPERATION_ID = "2376cff5b5ab42e249e86e008e921498888d759b753d811c89fbae03a2ec4de2";
+  public static final String OPERATION_ID = "2b64913a07f67de82dabbf25c19405abf80f110bf3d0c21a451803c5ddb798fd";
 
   public static final String QUERY_DOCUMENT = QueryDocumentMinifier.minify(
     "query Architecture($problem_id: Int!) {\n"
-        + "  items: Architecture(where: {problem_id: {_eq: $problem_id}}) {\n"
+        + "  items: Architecture(where: {problem_id: {_eq: $problem_id}, eval_status: {_eq: true}}) {\n"
         + "    __typename\n"
         + "    id\n"
         + "    input\n"
@@ -196,12 +196,15 @@ public final class ArchitectureQuery implements Query<ArchitectureQuery.Data, Ar
   public static class Data implements Operation.Data {
     static final ResponseField[] $responseFields = {
       ResponseField.forList("items", "Architecture", new UnmodifiableMapBuilder<String, Object>(1)
-      .put("where", new UnmodifiableMapBuilder<String, Object>(1)
+      .put("where", new UnmodifiableMapBuilder<String, Object>(2)
         .put("problem_id", new UnmodifiableMapBuilder<String, Object>(1)
           .put("_eq", new UnmodifiableMapBuilder<String, Object>(2)
             .put("kind", "Variable")
             .put("variableName", "problem_id")
             .build())
+          .build())
+        .put("eval_status", new UnmodifiableMapBuilder<String, Object>(1)
+          .put("_eq", "true")
           .build())
         .build())
       .build(), false, Collections.<ResponseField.Condition>emptyList())

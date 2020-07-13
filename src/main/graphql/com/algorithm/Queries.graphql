@@ -3,17 +3,35 @@
 
 
 
-query Orbit($problem_id: Int!){
-    items: Join__Orbit_Attribute(where: {problem_id: {_eq: $problem_id}}, distinct_on: [orbit_id]) {
-        id
-        Problem {
-            name
-        }
-        orbit: Orbit {
-            name
+query OrbitCount($problem_id: Int!){
+    item: Join__Problem_Orbit_aggregate(where: {problem_id: {_eq: $problem_id}}) {
+        aggregate {
+            count
         }
     }
 }
+
+query InstrumentCount($problem_id: Int!){
+    item: Join__Problem_Instrument_aggregate(where: {problem_id: {_eq: $problem_id}}) {
+        aggregate {
+            count
+        }
+    }
+}
+
+
+
+#query Orbit($problem_id: Int!){
+#    items: Join__Orbit_Attribute(where: {problem_id: {_eq: $problem_id}}, distinct_on: [orbit_id]) {
+#        id
+#        Problem {
+#            name
+#        }
+#        orbit: Orbit {
+#            name
+#        }
+#    }
+#}
 
 
 
@@ -36,7 +54,7 @@ query SingleArchitecture($problem_id: Int!, $input: String!) {
 
 
 query Architecture($problem_id: Int!) {
-    items: Architecture(where: {problem_id: {_eq: $problem_id}}) {
+    items: Architecture(where: {problem_id: {_eq: $problem_id}, eval_status: {_eq: true}}) {
         id
         input
         science

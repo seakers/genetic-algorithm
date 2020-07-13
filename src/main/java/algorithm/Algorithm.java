@@ -3,7 +3,8 @@ package algorithm;
 import algorithm.search.BinaryInputInteractiveSearch;
 import algorithm.search.problems.Assigning.AssigningArchitecture;
 import algorithm.search.problems.Assigning.AssigningProblem;
-import com.algorithm.OrbitQuery;
+import com.algorithm.InstrumentCountQuery;
+import com.algorithm.OrbitCountQuery;
 import com.apollographql.apollo.ApolloCall;
 import com.apollographql.apollo.ApolloClient;
 import com.apollographql.apollo.api.Response;
@@ -117,21 +118,21 @@ public class Algorithm implements Runnable{
         }
 
         private int getNumOrbits(int problem_id){
-            OrbitQuery orbitQuery = OrbitQuery.builder()
+            OrbitCountQuery orbitQuery = OrbitCountQuery.builder()
                     .problem_id(problem_id)
                     .build();
-            ApolloCall<OrbitQuery.Data> apolloCall  = this.apollo.query(orbitQuery);
-            Observable<Response<OrbitQuery.Data>> observable  = Rx2Apollo.from(apolloCall);
-            return observable.blockingFirst().getData().items().size();
+            ApolloCall<OrbitCountQuery.Data> apolloCall  = this.apollo.query(orbitQuery);
+            Observable<Response<OrbitCountQuery.Data>> observable  = Rx2Apollo.from(apolloCall);
+            return observable.blockingFirst().getData().item().aggregate().count();
         }
 
         private int getNumInstr(int problem_id){
-            OrbitQuery orbitQuery = OrbitQuery.builder()
+            InstrumentCountQuery orbitQuery = InstrumentCountQuery.builder()
                     .problem_id(problem_id)
                     .build();
-            ApolloCall<OrbitQuery.Data> apolloCall  = this.apollo.query(orbitQuery);
-            Observable<Response<OrbitQuery.Data>> observable  = Rx2Apollo.from(apolloCall);
-            return observable.blockingFirst().getData().items().size();
+            ApolloCall<InstrumentCountQuery.Data> apolloCall  = this.apollo.query(orbitQuery);
+            Observable<Response<InstrumentCountQuery.Data>> observable  = Rx2Apollo.from(apolloCall);
+            return observable.blockingFirst().getData().item().aggregate().count();
         }
 
         public Builder getProblemData(int problem_id){

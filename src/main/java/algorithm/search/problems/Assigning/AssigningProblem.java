@@ -6,7 +6,6 @@
 package algorithm.search.problems.Assigning;
 
 import com.algorithm.ArchitectureSubscriptionQuery;
-import com.algorithm.OrbitQuery;
 import com.algorithm.SingleArchitectureQuery;
 import com.apollographql.apollo.ApolloCall;
 import com.apollographql.apollo.ApolloClient;
