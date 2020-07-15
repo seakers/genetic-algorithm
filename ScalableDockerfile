@@ -69,9 +69,9 @@ RUN wget https://services.gradle.org/distributions/gradle-6.0-bin.zip && \
 ENV PATH="/installs/gradle-6.0/bin:${PATH}"
 
 
-# COPY /Users/gabeapaza/repositories/seakers/daphne/codebase/genetic-algorithm /app/genetic-algorithm
+COPY /. /app/genetic-algorithm
 
-# -- GRAPHQL SCHEMA --
+
 WORKDIR /app/genetic-algorithm
 # RUN gradle generateApolloSources
 CMD gradle run
