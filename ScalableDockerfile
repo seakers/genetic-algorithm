@@ -74,7 +74,7 @@ ENV PATH="/installs/gradle-6.0/bin:${PATH}"
 # -- GRAPHQL SCHEMA --
 WORKDIR /app/genetic-algorithm
 # RUN gradle generateApolloSources
-# CMD gradle run
+CMD gradle run
 
 
 
