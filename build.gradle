@@ -3,14 +3,14 @@ buildscript {
         jcenter()
     }
     dependencies {
-        classpath("com.apollographql.apollo:apollo-gradle-plugin:2.0.0")
+        classpath("com.apollographql.apollo:apollo-gradle-plugin:2.2.2")
     }
 }
 
 plugins {
     id 'java'
     id 'application'
-    id 'com.apollographql.apollo' version '2.0.0'
+    id 'com.apollographql.apollo' version '2.2.2'
 }
 
 repositories {
@@ -40,8 +40,8 @@ dependencies {
     compile 'com.google.code.gson:gson:2.8.5'
 
     // GRAPHQL
-    implementation 'com.apollographql.apollo:apollo-runtime:2.0.0'
-    implementation 'com.apollographql.apollo:apollo-rx2-support:2.0.0'
+    implementation 'com.apollographql.apollo:apollo-runtime:2.2.2'
+    implementation 'com.apollographql.apollo:apollo-rx2-support:2.2.2'
     compileOnly("org.jetbrains:annotations:13.0")
     testCompileOnly("org.jetbrains:annotations:13.0")
 
