@@ -144,46 +144,22 @@ public class Algorithm implements Runnable{
             this.initialPopSize    = items.size();
             this.numOrbits         = this.getNumOrbits(problem_id);
             this.numInstruments    = this.getNumInstr(problem_id);
-//            this.solutions      = new ArrayList<>(this.initialPopSize);
-//
-//            for(ArchitectureQuery.Item item: items){
-//
-//                String        string_inputs = item.input();
-//                double        science       = Double.parseDouble(item.science().toString());
-//                double        cost          = Double.parseDouble(item.cost().toString());
-//                List<Boolean> inputs        = this.stringToBool(string_inputs);
-//
-//                AssigningArchitecture new_arch = new AssigningArchitecture(new int[]{1}, this.getNumInstr(problem_id), this.getNumOrbits(problem_id), 2);
-//
-//                for (int j = 1; j < new_arch.getNumberOfVariables(); ++j) {
-//                    BinaryVariable var = new BinaryVariable(1);
-//                    var.set(0, inputs.get(j-1));
-//                    new_arch.setVariable(j, var);
-//                }
-//                new_arch.setObjective(0, -science);
-//                new_arch.setObjective(1, cost);
-//                new_arch.setAlreadyEvaluated(true);
-//
-//                System.out.println("---> SOLUTION: " + string_inputs + " " + science + " " + cost);
-//
-//                this.solutions.add(new_arch);
-//            }
             return this;
         }
 
         public Algorithm build(){
             Algorithm build = new Algorithm();
 
-            build.ga_id    = this.ga_id;
-            build.initialPopSize = this.initialPopSize;
-            build.maxEvals = this.maxEvals;
+            build.ga_id                = this.ga_id;
+            build.initialPopSize       = this.initialPopSize;
+            build.maxEvals             = this.maxEvals;
             build.crossoverProbability = this.crossoverProbability;
-            build.mutationProbability = this.mutationProbability;
-            build.vassarQueueUrl = this.vassarQueueUrl;
-            build.numOrbits = this.numOrbits;
-            build.numInstruments = this.numInstruments;
-            build.problem_id = this.problem_id;
-            build.initialPopulation = this.initialPopulation;
+            build.mutationProbability  = this.mutationProbability;
+            build.vassarQueueUrl       = this.vassarQueueUrl;
+            build.numOrbits            = this.numOrbits;
+            build.numInstruments       = this.numInstruments;
+            build.problem_id           = this.problem_id;
+            build.initialPopulation    = this.initialPopulation;
 
             build.properties = new TypedProperties();
             build.properties.setInt("maxEvaluations", this.maxEvals);
@@ -259,6 +235,8 @@ public class Algorithm implements Runnable{
             this.solutions.add(new_arch);
         }
     }
+
+
 
     public void initialize(){
 

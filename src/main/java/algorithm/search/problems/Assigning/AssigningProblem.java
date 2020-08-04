@@ -165,7 +165,6 @@ public class AssigningProblem extends AbstractProblem implements SystemArchitect
         arch.setAlreadyEvaluated(true);
     }
 
-
     public boolean runningStatusCheck(String input){
         ArchitectureSubscriptionQuery subQuery = ArchitectureSubscriptionQuery.builder()
                 .problem_id(problem_id)
@@ -191,5 +190,12 @@ public class AssigningProblem extends AbstractProblem implements SystemArchitect
     public Solution newSolution() {
         return new AssigningArchitecture(alternativesForNumberOfSatellites, this.numInstruments, this.numOrbits, 2);
     }
+
+
+
+
+
+
+
 
 }

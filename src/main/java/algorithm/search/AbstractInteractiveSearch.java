@@ -25,12 +25,12 @@ public abstract class AbstractInteractiveSearch implements Callable<org.moeafram
     private String sendQueue;
 
     public AbstractInteractiveSearch(Algorithm alg, TypedProperties properties, String id) {
-        this.alg = alg;
+        this.alg        = alg;
         this.properties = properties;
-        this.id = id;
-        this.isStopped = false;
-        receiveQueue = id + "_brainga";
-        sendQueue = id + "_gabrain";
+        this.id         = id;
+        this.isStopped  = false;
+        receiveQueue    = id + "_brainga";
+        sendQueue       = id + "_gabrain";
 
         System.out.println("---> Send brain msg queue: " +  sendQueue);
         System.out.println("---> Receive queue: " +  receiveQueue);
@@ -39,7 +39,7 @@ public abstract class AbstractInteractiveSearch implements Callable<org.moeafram
         factory.setHost(System.getenv("RABBITMQ_HOST"));
         try  {
             mqConnection = factory.newConnection();
-            mqChannel = mqConnection.createChannel();
+            mqChannel    = mqConnection.createChannel();
             mqChannel.queueDeclare(receiveQueue, false, false, false, null);
             mqChannel.queueDeclare(sendQueue, false, false, false, null);
         }
@@ -60,6 +60,8 @@ public abstract class AbstractInteractiveSearch implements Callable<org.moeafram
         long startTime = System.currentTimeMillis();
         long lastPingTime = System.currentTimeMillis();
 
+
+        // Original population
         Population archive = new Population(((AbstractEvolutionaryAlgorithm)alg).getArchive());
 
 
@@ -99,24 +101,25 @@ public abstract class AbstractInteractiveSearch implements Callable<org.moeafram
                 break;
             }
 
-            System.out.println("\n\n---> Algorithm Step");
+            // 1. Create new designs and evaluate
             alg.step();
 
-            System.out.println("\n\n---> Get population");
+            // 2. ??? not used in either this code or old GA
             Population pop = ((AbstractEvolutionaryAlgorithm) alg).getPopulation();
+            System.out.println("---> Population size: " + pop.size());
 
-            // Only send back those architectures that improve the pareto frontier
-            System.out.println("\n\n---> Get new population");
+            // 3. Get the new population
             Population newArchive = ((AbstractEvolutionaryAlgorithm)alg).getArchive();
+            System.out.println("---> Archive size: " + newArchive.size());
 
-            // GABE: this loop process the new architecture from the GA through rabbitmq
-            System.out.println("\n\n---> Compare new to old population");
+            // 4. Iterate over new population - if any designs are new, send them to the frontend
             for (int i = 0; i < newArchive.size(); ++i) {
 
-                // Check to see if we have a new solution
-                Solution newSol = newArchive.get(i);
-                boolean alreadyThere = archive.contains(newSol);
-                if (!alreadyThere) { // if it is a new solution
+                // 4.1 Check for new designs
+                Solution newSol       = newArchive.get(i);
+                boolean  alreadyThere = archive.contains(newSol);
+                if (!alreadyThere) {
+
                     System.out.println("---> Sending new arch!");
                     newSol.setAttribute("NFE", alg.getNumberOfEvaluations());
 
@@ -133,10 +136,7 @@ public abstract class AbstractInteractiveSearch implements Callable<org.moeafram
                     catch (IOException e) {
                         e.printStackTrace();
                     }
-                }
-                else{
-                    System.out.println("---> Architecture already there");
-                    System.out.println("---> newArchive (size): "+ newArchive.size());
+
                 }
             }
 
