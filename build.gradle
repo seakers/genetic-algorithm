@@ -1,25 +1,13 @@
-buildscript {
-    repositories {
-        jcenter()
-    }
-    dependencies {
-        classpath("com.apollographql.apollo:apollo-gradle-plugin:2.0.0")
-    }
-}
-
 plugins {
     id 'java'
     id 'application'
-    id 'com.apollographql.apollo' version '2.0.0'
+    id 'com.apollographql.apollo' version '2.5.5'
 }
 
 repositories {
     mavenCentral()
-    jcenter()
     mavenLocal()
 }
-
-
 
 dependencies {
     // testCompile group: 'junit', name: 'junit', version: '4.12'
@@ -27,6 +15,7 @@ dependencies {
     // AWS
     implementation platform('software.amazon.awssdk:bom:2.13.13')
     implementation 'software.amazon.awssdk:sqs'
+    implementation 'software.amazon.awssdk:ecs'
     implementation 'software.amazon.awssdk:regions'
     implementation 'software.amazon.awssdk:auth'
 
@@ -37,13 +26,14 @@ dependencies {
     compile 'com.rabbitmq:amqp-client:5.7.3'
 
     // GSON
+    implementation 'com.googlecode.json-simple:json-simple:1.1.1'
     compile 'com.google.code.gson:gson:2.8.5'
 
     // GRAPHQL
-    implementation 'com.apollographql.apollo:apollo-runtime:2.0.0'
-    implementation 'com.apollographql.apollo:apollo-rx2-support:2.0.0'
-    compileOnly("org.jetbrains:annotations:13.0")
-    testCompileOnly("org.jetbrains:annotations:13.0")
+    implementation 'com.apollographql.apollo:apollo-runtime:2.5.5'
+    implementation 'com.apollographql.apollo:apollo-rx2-support:2.5.5'
+    compileOnly("org.jetbrains:annotations:16.0.2")
+    testCompileOnly("org.jetbrains:annotations:16.0.2")
 
     // SYSTEM ARCHITECTURE PROBLEMS
     compile 'seakers:system-architecture-problems:1.0'
@@ -61,4 +51,12 @@ version 'beta'
 
 application {
     mainClassName = 'app.App'
+}
+
+apollo {
+    service("design-evaluator"){
+        introspection {
+            endpointUrl = "http://graphql:8080/v1/graphql"
+        }
+    }
 }

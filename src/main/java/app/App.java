@@ -20,8 +20,6 @@ import software.amazon.awssdk.auth.credentials.EnvironmentVariableCredentialsPro
 
 import java.net.URI;
 
-import sqs.Consumer;
-
 
 public class App {
 
@@ -38,20 +36,20 @@ public class App {
 
 
         boolean debug                = Boolean.parseBoolean(System.getenv("DEBUG"));
-        String  queueUrl             = System.getenv("INPUT_QUEUE_URL");
-        String  vassarUrl            = System.getenv("EVAL_QUEUE_URL");
-        String  aws_stack_endpoint   = System.getenv("AWS_STACK_ENDPOINT");
-        String  region_name          = System.getenv("REGION");
+        String  requestUrl           = System.getenv("GA_REQUEST_URL");
+        String  responseUrl          = System.getenv("GA_RESPONSE_URL");
+        String  awsStackEndpoint     = System.getenv("AWS_STACK_ENDPOINT");
+        String  regionName           = System.getenv("REGION");
         String  apolloUrl            = System.getenv("APOLLO_URL");
         int     messageRetrievalSize = Integer.parseInt(System.getenv("MESSAGE_RETRIEVAL_SIZE"));
         int     messageQueryTimeout  = Integer.parseInt(System.getenv("MESSAGE_QUERY_TIMEOUT"));
 
 
         Region region;
-        if(region_name.equals("US_EAST_1")){
+        if(regionName.equals("US_EAST_1")){
             region = Region.US_EAST_1;
         }
-        else if(region_name.equals("US_EAST_2")){
+        else if(regionName.equals("US_EAST_2")){
             region = Region.US_EAST_2;
         }
         else{
@@ -59,11 +57,11 @@ public class App {
         }
 
         System.out.println("\n------------------ ALGORITHM INIT ------------------");
-        System.out.println("----------> INPUT QUEUE URL: " + queueUrl);
-        System.out.println("-----------> EVAL QUEUE URL: " + vassarUrl);
+        System.out.println("----------> REQUEST QUEUE URL: " + requestUrl);
+        System.out.println("-----------> RESPONSE QUEUE URL: " + responseUrl);
         System.out.println("---------------> HASURA URL: " + apolloUrl);
-        System.out.println("---------> AWS ENDPOINT URL: " + aws_stack_endpoint);
-        System.out.println("-------------------> REGION: " + region_name);
+        System.out.println("---------> AWS ENDPOINT URL: " + awsStackEndpoint);
+        System.out.println("-------------------> REGION: " + regionName);
         System.out.println("---> MESSAGE RETRIEVAL SIZE: " + messageRetrievalSize);
         System.out.println("----> MESSAGE QUERY TIMEOUT: " + messageQueryTimeout);
         System.out.println("--------------------> DEBUG: " + debug);
@@ -82,20 +80,20 @@ public class App {
 
         SqsClient sqsClient = SqsClient.builder()
                             .region(region)
-                            .endpointOverride(URI.create(aws_stack_endpoint))
+                            .endpointOverride(URI.create(awsStackEndpoint))
                             .credentialsProvider(EnvironmentVariableCredentialsProvider.create())
                             .build();
 
 
         Consumer consumer = new Consumer.Builder(sqsClient)
-                                        .setAwsStackEndpoint(aws_stack_endpoint)
+                                        .setAwsStackEndpoint(awsStackEndpoint)
                                         .setRegion(region)
                                         .debug(debug)
                                         .setMessageQueryTimeout(messageQueryTimeout)
                                         .setMessageRetrievalSize(messageRetrievalSize)
-                                        .setQueueUrl(queueUrl)
+                                        .setRequestQueueUrl(requestUrl)
+                                        .setResponseQueueUrl(responseUrl)
                                         .setApolloUrl(apolloUrl)
-                                        .setVassarQueueUrl(vassarUrl)
                                         .build();
 
 

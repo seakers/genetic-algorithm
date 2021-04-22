@@ -10,7 +10,6 @@ RUN apt-get update -y
 RUN apt-get upgrade -y
 RUN apt-get install git -y
 RUN git clone https://github.com/seakers/SystemArchitectureProblems.git
-RUN git clone https://github.com/seakers/orekit.git
 
 WORKDIR /repos/SystemArchitectureProblems
 RUN git fetch && git checkout jdk-11
@@ -39,20 +38,11 @@ COPY --from=BUILD_TOOL /root/.m2 /root/.m2
 #ENV AWS_STACK_ENDPOINT http://localstack:4576
 
 
-
-
 # -- DEPS --
 WORKDIR /installs
 
 RUN yum update -y && \
-    yum upgrade -y && \
-    yum install git wget unzip tar -y
-
-# -- GRADLE --
-RUN wget https://services.gradle.org/distributions/gradle-6.0-bin.zip && \
-    unzip gradle-6.0-bin.zip && \
-    rm gradle-6.0-bin.zip
-ENV PATH="/installs/gradle-6.0/bin:${PATH}"
+    yum upgrade -y
 
 
 # COPY /Users/gabeapaza/repositories/seakers/daphne/codebase/genetic-algorithm /app/genetic-algorithm
