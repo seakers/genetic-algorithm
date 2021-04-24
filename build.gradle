@@ -41,6 +41,11 @@ dependencies {
     // THRIFT
     compile 'org.apache.thrift:libthrift:0.12.0'
 
+    // APACHE COMMONS
+    compile 'org.apache.logging.log4j:log4j-api:2.14.1'
+    compile 'org.apache.logging.log4j:log4j-core:2.14.1'
+    compile 'org.apache.logging.log4j:log4j-slf4j-impl:2.14.1'
+
 
 }
 

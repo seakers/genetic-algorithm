@@ -48,7 +48,7 @@ RUN yum update -y && \
 # COPY /Users/gabeapaza/repositories/seakers/daphne/codebase/genetic-algorithm /app/genetic-algorithm
 
 # -- GRAPHQL SCHEMA --
-WORKDIR /app/genetic-algorithm
+WORKDIR /app
 # RUN gradle generateApolloSources
 # CMD gradle run
 
