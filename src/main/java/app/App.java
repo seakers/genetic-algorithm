@@ -15,6 +15,7 @@ package app;
 
 import sqs.Consumer;
 import software.amazon.awssdk.services.sqs.SqsClient;
+import software.amazon.awssdk.services.sqs.SqsClientBuilder;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.auth.credentials.EnvironmentVariableCredentialsProvider;
 
@@ -78,11 +79,12 @@ public class App {
 //
 
 
-        SqsClient sqsClient = SqsClient.builder()
-                            .region(region)
-                            .endpointOverride(URI.create(awsStackEndpoint))
-                            .credentialsProvider(EnvironmentVariableCredentialsProvider.create())
-                            .build();
+        SqsClientBuilder sqsClientBuilder = SqsClient.builder()
+                                                     .region(region);
+        if (awsStackEndpoint != null) {
+            sqsClientBuilder.endpointOverride(URI.create(awsStackEndpoint));
+        }
+        final SqsClient sqsClient = sqsClientBuilder.build();
 
 
         Consumer consumer = new Consumer.Builder(sqsClient)

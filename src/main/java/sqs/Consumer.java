@@ -20,6 +20,7 @@ import software.amazon.awssdk.services.ecs.model.StopTaskResponse;
 import software.amazon.awssdk.services.ecs.model.UpdateServiceRequest;
 import software.amazon.awssdk.services.ecs.model.UpdateServiceResponse;
 import software.amazon.awssdk.services.sqs.SqsClient;
+import software.amazon.awssdk.services.sqs.SqsClientBuilder;
 import software.amazon.awssdk.services.sqs.model.ChangeMessageVisibilityRequest;
 import software.amazon.awssdk.services.sqs.model.CreateQueueRequest;
 import software.amazon.awssdk.services.sqs.model.CreateQueueResponse;
@@ -498,11 +499,12 @@ public class Consumer implements Runnable {
         OkHttpClient http   = new OkHttpClient.Builder().build();
         ApolloClient apollo = ApolloClient.builder().serverUrl(this.apolloUrl).okHttpClient(http).build();
 
-        SqsClient sqsClient = SqsClient.builder()
-                .region(this.region)
-                .endpointOverride(URI.create(this.awsStackEndpoint))
-                .credentialsProvider(EnvironmentVariableCredentialsProvider.create())
-                .build();
+        SqsClientBuilder sqsClientBuilder = SqsClient.builder()
+                                                     .region(this.region);
+        if (awsStackEndpoint != null) {
+            sqsClientBuilder.endpointOverride(URI.create(this.awsStackEndpoint));
+        }
+        final SqsClient sqsClient = sqsClientBuilder.build();
 
         Algorithm process = new Algorithm.Builder(this.vassarRequestQueueUrl)
                 .setGaID(ga_id)
@@ -649,7 +651,6 @@ public class Consumer implements Runnable {
             String serviceArn = System.getenv("SERVICE_ARN");
             final EcsClient ecsClient = EcsClient.builder()
                                                  .region(Region.US_EAST_2)
-                                                 .credentialsProvider(EnvironmentVariableCredentialsProvider.create())
                                                  .build();
             DescribeServicesRequest request = DescribeServicesRequest.builder()
                                                                      .cluster(clusterArn)
