@@ -136,7 +136,7 @@ public class AssigningProblem extends AbstractProblem implements SystemArchitect
         System.out.println("---> Processing architecure");
         this.sqs.sendMessage(SendMessageRequest.builder()
                                             .queueUrl(this.queueUrl)
-                                            .messageBody("")
+                                            .messageBody("ga_message")
                                             .messageAttributes(messageAttributes)
                                             .delaySeconds(this.delay)
                                             .build());

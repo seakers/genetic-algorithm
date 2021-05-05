@@ -415,7 +415,7 @@ public class Consumer implements Runnable {
 
         this.sqsClient.sendMessage(SendMessageRequest.builder()
                 .queueUrl(this.responseQueueUrl)
-                .messageBody("")
+                .messageBody("ga_message")
                 .messageAttributes(messageAttributes)
                 .delaySeconds(0)
                 .build());
@@ -467,7 +467,7 @@ public class Consumer implements Runnable {
 
         this.sqsClient.sendMessage(SendMessageRequest.builder()
                 .queueUrl(this.userResponseQueueUrl)
-                .messageBody("")
+                .messageBody("ga_message")
                 .messageAttributes(messageAttributes)
                 .delaySeconds(0)
                 .build());
