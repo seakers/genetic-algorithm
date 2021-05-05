@@ -9,8 +9,6 @@ import okhttp3.OkHttpClient;
 
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
-import org.moeaframework.core.Solution;
-import software.amazon.awssdk.auth.credentials.EnvironmentVariableCredentialsProvider;
 import software.amazon.awssdk.services.ecs.EcsClient;
 import software.amazon.awssdk.services.ecs.model.DescribeServicesRequest;
 import software.amazon.awssdk.services.ecs.model.DescribeServicesResponse;
@@ -54,6 +52,7 @@ public class Consumer implements Runnable {
     }
 
     private SqsClient sqsClient;
+    private EcsClient ecsClient;
     private String    requestQueueUrl;
     private String    responseQueueUrl;
     private String    userRequestQueueUrl;
@@ -76,6 +75,7 @@ public class Consumer implements Runnable {
     public static class Builder{
 
         private SqsClient sqsClient;
+        private EcsClient ecsClient;
         private String    requestQueueUrl;
         private String    responseQueueUrl;
         private String    apolloUrl;
@@ -87,6 +87,11 @@ public class Consumer implements Runnable {
 
         public Builder(SqsClient sqsClient){
             this.sqsClient = sqsClient;
+        }
+
+        public Builder setECSClient(EcsClient ecsClient) {
+            this.ecsClient = ecsClient;
+            return this;
         }
 
         public Builder setRequestQueueUrl(String requestQueueUrl) {
@@ -135,6 +140,7 @@ public class Consumer implements Runnable {
             Consumer build = new Consumer();
 
             build.sqsClient      = this.sqsClient;
+            build.ecsClient      = this.ecsClient;
             build.apolloUrl      = this.apolloUrl;
             build.requestQueueUrl  = this.requestQueueUrl;
             build.responseQueueUrl = this.responseQueueUrl;
@@ -649,14 +655,11 @@ public class Consumer implements Runnable {
             // Check service for number of tasks
             String clusterArn = System.getenv("CLUSTER_ARN");
             String serviceArn = System.getenv("SERVICE_ARN");
-            final EcsClient ecsClient = EcsClient.builder()
-                                                 .region(Region.US_EAST_2)
-                                                 .build();
             DescribeServicesRequest request = DescribeServicesRequest.builder()
                                                                      .cluster(clusterArn)
                                                                      .services(serviceArn)
                                                                      .build();
-            DescribeServicesResponse response = ecsClient.describeServices(request);
+            DescribeServicesResponse response = this.ecsClient.describeServices(request);
             if (response.hasServices()) {
                 Service service = response.services().get(0);
                 Integer desiredCount = service.desiredCount();
@@ -667,7 +670,7 @@ public class Consumer implements Runnable {
                                                                              .desiredCount(desiredCount-1)
                                                                              .service(serviceArn)
                                                                              .build();
-                    UpdateServiceResponse updateResponse = ecsClient.updateService(updateRequest);
+                    UpdateServiceResponse updateResponse = this.ecsClient.updateService(updateRequest);
 
                     // Close myself as the extra task
                     String taskArn = getTaskArn();
@@ -675,7 +678,7 @@ public class Consumer implements Runnable {
                                                                  .cluster(clusterArn)
                                                                  .task(taskArn)
                                                                  .build();
-                    StopTaskResponse stopResponse = ecsClient.stopTask(stopRequest);
+                    StopTaskResponse stopResponse = this.ecsClient.stopTask(stopRequest);
                 }
             }
         }
@@ -717,6 +720,7 @@ public class Consumer implements Runnable {
                 //Get the required object from the above created object
                 taskArn = (String)responseObj.get("TaskARN");
             }
+            conn.disconnect();
 
         } catch (Exception e) {
             e.printStackTrace();

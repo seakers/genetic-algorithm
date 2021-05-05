@@ -1,0 +1,38 @@
+{
+  "family": "genetic-algorithm",
+  "networkMode": "awsvpc",
+  "containerDefinitions": [
+    {
+      "name": "genetic-algorithm",
+      "image": "923405430231.dkr.ecr.us-east-2.amazonaws.com/genetic-algorithm:latest",
+      "essential": true,
+      "command": ["/app/genetic-algorithm/bin/genetic-algorithm"],
+      "environment": [
+        { "name": "APOLLO_URL", "value": "http://graphql.daphne.local:8080/v1/graphql" },
+        { "name": "GA_REQUEST_URL", "value": "https://sqs.us-east-2.amazonaws.com/923405430231/ga_request" },
+        { "name": "GA_RESPONSE_URL", "value": "https://sqs.us-east-2.amazonaws.com/923405430231/ga_response" },
+        { "name": "DEPLOYMENT_TYPE", "value": "AWS" },
+        { "name": "REGION", "value": "US_EAST_2" },
+        { "name": "MESSAGE_RETRIEVAL_SIZE", "value": "3" },
+        { "name": "MESSAGE_QUERY_TIMEOUT", "value": "5" },
+        { "name": "CLUSTER_ARN", "value": "arn:aws:ecs:us-east-2:923405430231:cluster/daphne-cluster" },
+        { "name": "SERVICE_ARN", "value": "arn:aws:ecs:us-east-2:923405430231:service/daphne-cluster/genetic-algorithm" }
+      ],
+      "interactive": true,
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-create-group": true,
+          "awslogs-group": "daphne-ga",
+          "awslogs-region": "us-east-2",
+          "awslogs-stream-prefix": "daphne"
+        }
+      }
+    }
+  ],
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "1024",
+  "memory": "4096",
+  "taskRoleArn": "arn:aws:iam::923405430231:role/DaphneEvaluatorTaskRole",
+  "executionRoleArn": "arn:aws:iam::923405430231:role/ecsTaskExecutionRole"
+}

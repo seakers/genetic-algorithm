@@ -14,10 +14,10 @@ package app;
 
 
 import sqs.Consumer;
+import software.amazon.awssdk.services.ecs.EcsClient;
 import software.amazon.awssdk.services.sqs.SqsClient;
 import software.amazon.awssdk.services.sqs.SqsClientBuilder;
 import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.auth.credentials.EnvironmentVariableCredentialsProvider;
 
 import java.net.URI;
 
@@ -86,8 +86,16 @@ public class App {
         }
         final SqsClient sqsClient = sqsClientBuilder.build();
 
+        EcsClient ecsClient = null;
+        if (System.getenv("DEPLOYMENT_TYPE").equals("AWS")) {
+            ecsClient = EcsClient.builder()
+                            .region(Region.US_EAST_2)
+                            .build();
+        }
+
 
         Consumer consumer = new Consumer.Builder(sqsClient)
+                                        .setECSClient(ecsClient)
                                         .setAwsStackEndpoint(awsStackEndpoint)
                                         .setRegion(region)
                                         .debug(debug)

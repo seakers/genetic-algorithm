@@ -1,0 +1,42 @@
+########################
+### Build Containers ###
+########################
+
+# Download and install dependencies not available on maven
+FROM maven:3-jdk-11-slim AS BUILD_TOOL
+WORKDIR /repos
+RUN apt-get update -y
+RUN apt-get upgrade -y
+RUN apt-get install git -y
+RUN git clone https://github.com/seakers/SystemArchitectureProblems.git
+
+## 1. SystemArchitectureProblems ##
+WORKDIR /repos/SystemArchitectureProblems
+RUN git fetch && git checkout jdk-11
+RUN mvn install
+
+# Compile and package the app
+WORKDIR /app
+COPY /gradle /app/gradle
+COPY /src /app/src
+COPY /build.gradle /app/build.gradle
+COPY /settings.gradle /app/settings.gradle
+COPY /gradlew /app/gradlew
+
+RUN ./gradlew installDist
+
+
+#######################
+### Final Container ###
+#######################
+
+# - Environment variables are passed in the AWS Fargate task definition
+FROM amazoncorretto:11
+COPY --from=BUILD_TOOL /app/build/install/genetic-algorithm /app/genetic-algorithm
+
+# Debug stuff
+RUN yum install -y ps htop top free
+
+# -- Set default directory for running --
+WORKDIR /app/genetic-algorithm
+CMD ./bin/genetic-algorithm
