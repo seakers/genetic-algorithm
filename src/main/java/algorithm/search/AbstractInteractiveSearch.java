@@ -11,41 +11,33 @@ import org.moeaframework.core.Population;
 import org.moeaframework.core.Solution;
 import org.moeaframework.util.TypedProperties;
 
+import algorithm.search.problems.Assigning.AssigningArchitecture;
+import software.amazon.awssdk.services.sqs.SqsClient;
+import software.amazon.awssdk.services.sqs.model.MessageAttributeValue;
+import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
+
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 public abstract class AbstractInteractiveSearch implements Callable<org.moeaframework.core.Algorithm> {
     private final Algorithm alg;
     private final TypedProperties properties;
-    private final String id;
     private boolean isStopped;
-    private Connection mqConnection;
-    private Channel mqChannel;
-    private String receiveQueue;
-    private String sendQueue;
+    private ConcurrentLinkedQueue<String> privateQueue;
+    private SqsClient sqsClient;
+    private String userQueueUrl;
 
-    public AbstractInteractiveSearch(Algorithm alg, TypedProperties properties, String id) {
+    public AbstractInteractiveSearch(Algorithm alg, TypedProperties properties, ConcurrentLinkedQueue<String> privateQueue, SqsClient sqsClient, String userQueueUrl) {
         this.alg = alg;
         this.properties = properties;
-        this.id = id;
         this.isStopped = false;
-        receiveQueue = id + "_brainga";
-        sendQueue = id + "_gabrain";
-
-        System.out.println("---> Send brain msg queue: " +  sendQueue);
-        System.out.println("---> Receive queue: " +  receiveQueue);
-
-        ConnectionFactory factory = new ConnectionFactory();
-        factory.setHost(System.getenv("RABBITMQ_HOST"));
-        try  {
-            mqConnection = factory.newConnection();
-            mqChannel = mqConnection.createChannel();
-            mqChannel.queueDeclare(receiveQueue, false, false, false, null);
-            mqChannel.queueDeclare(sendQueue, false, false, false, null);
-        }
-        catch (Exception e) {
-            e.printStackTrace();
-        }
+        this.privateQueue = privateQueue;
+        this.sqsClient = sqsClient;
+        this.userQueueUrl = userQueueUrl;
     }
 
     @Override
@@ -62,32 +54,20 @@ public abstract class AbstractInteractiveSearch implements Callable<org.moeafram
 
         Population archive = new Population(((AbstractEvolutionaryAlgorithm)alg).getArchive());
 
-
-
-
-
         while (!alg.isTerminated() && (alg.getNumberOfEvaluations() < maxEvaluations) && !isStopped) {
             // External conditions for stopping
-
-
-            // GABE: try to get the processed architecture back from the design evaluator
-            try {
-
-                // GABE: get processed architecture back from vassar
-                GetResponse message = mqChannel.basicGet(receiveQueue, true);
-                while (message != null) {
-                    String body = new String(message.getBody(), "UTF-8");
-                    if (body.equals("close")) {
+            if (!this.privateQueue.isEmpty()) {
+                ArrayList<String> returnMessages = new ArrayList<>();
+                while (!this.privateQueue.isEmpty()) {
+                    String msgContents = this.privateQueue.poll();
+                    if (msgContents.equals("stop")) {
                         this.isStopped = true;
                     }
-                    if (body.equals("ping")) {
+                    if (msgContents.equals("ping")) {
                         lastPingTime = System.currentTimeMillis();
                     }
-                    message = mqChannel.basicGet(receiveQueue, true);
                 }
-            }
-            catch (IOException e) {
-                e.printStackTrace();
+                this.privateQueue.addAll(returnMessages);
             }
 
             long currentTime = System.currentTimeMillis();
@@ -117,24 +97,28 @@ public abstract class AbstractInteractiveSearch implements Callable<org.moeafram
                 Solution newSol = newArchive.get(i);
                 boolean alreadyThere = archive.contains(newSol);
                 if (!alreadyThere) { // if it is a new solution
-                    System.out.println("---> Sending new arch!");
-                    newSol.setAttribute("NFE", alg.getNumberOfEvaluations());
-
-
-                    // Send the new architectures through REDIS
-                    // But first, turn it into something easier in JSON
-                    JsonElement jsonArch = getJSONArchitecture(newSol);
-                    JsonObject messageBack = new JsonObject();
-                    messageBack.add("type", new JsonPrimitive("new_arch"));
-                    messageBack.add("data", jsonArch);
-                    try {
-                        mqChannel.basicPublish("", sendQueue, null, messageBack.toString().getBytes());
-                    }
-                    catch (IOException e) {
-                        e.printStackTrace();
+                    // Check if it wasn't already in main database
+                    if (!((AssigningArchitecture)newSol).getAlreadyExisted()) {
+                        System.out.println("---> Sending new arch!");
+                        newSol.setAttribute("NFE", alg.getNumberOfEvaluations());
+    
+                        // Notify brain of new GA Architecture for proactive purposes (no need to send arch due to GraphQL)
+                        final Map<String, MessageAttributeValue> messageAttributes = new HashMap<>();
+                        messageAttributes.put("msgType",
+                                MessageAttributeValue.builder()
+                                        .dataType("String")
+                                        .stringValue("newGaArch")
+                                        .build()
+                        );
+                        this.sqsClient.sendMessage(SendMessageRequest.builder()
+                                .queueUrl(this.userQueueUrl)
+                                .messageBody("ga_message")
+                                .messageAttributes(messageAttributes)
+                                .delaySeconds(0)
+                                .build());
                     }
                 }
-                else{
+                else {
                     System.out.println("---> Architecture already there");
                     System.out.println("---> newArchive (size): "+ newArchive.size());
                 }

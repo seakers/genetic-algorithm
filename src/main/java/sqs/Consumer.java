@@ -2,9 +2,6 @@ package sqs;
 
 import algorithm.Algorithm;
 import com.apollographql.apollo.ApolloClient;
-import com.rabbitmq.client.Channel;
-import com.rabbitmq.client.Connection;
-import com.rabbitmq.client.ConnectionFactory;
 import okhttp3.OkHttpClient;
 
 import org.json.simple.JSONObject;
@@ -25,6 +22,9 @@ import software.amazon.awssdk.services.sqs.model.CreateQueueResponse;
 import software.amazon.awssdk.services.sqs.model.DeleteMessageRequest;
 import software.amazon.awssdk.services.sqs.model.GetQueueAttributesRequest;
 import software.amazon.awssdk.services.sqs.model.GetQueueAttributesResponse;
+import software.amazon.awssdk.services.sqs.model.GetQueueUrlRequest;
+import software.amazon.awssdk.services.sqs.model.GetQueueUrlResponse;
+import software.amazon.awssdk.services.sqs.model.ListQueuesResponse;
 import software.amazon.awssdk.services.sqs.model.Message;
 import software.amazon.awssdk.services.sqs.model.MessageAttributeValue;
 import software.amazon.awssdk.services.sqs.model.QueueAttributeName;
@@ -43,14 +43,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 
 public class Consumer implements Runnable {
-
+    
     private enum State {
         WAITING_FOR_USER, WAITING_FOR_ACK, READY
     }
-
+    
     private SqsClient sqsClient;
     private EcsClient ecsClient;
     private String    requestQueueUrl;
@@ -64,16 +65,18 @@ public class Consumer implements Runnable {
     private boolean   running;
     private int       messageRetrievalSize;
     private int       messageQueryTimeout;
-    private Map<String, Thread> algorithms;
+    private Thread    algorithm;
     private Region    region;
     private String    awsStackEndpoint;
     private State     currentState = State.WAITING_FOR_USER;
     private String    uuid = UUID.randomUUID().toString();
     private long      lastPingTime = System.currentTimeMillis();
+    private long      lastDownsizeRequestTime = System.currentTimeMillis();
     private int       userId;
-
+    private ConcurrentLinkedQueue<String> privateQueue;
+    
     public static class Builder{
-
+        
         private SqsClient sqsClient;
         private EcsClient ecsClient;
         private String    requestQueueUrl;
@@ -84,61 +87,61 @@ public class Consumer implements Runnable {
         private int       messageQueryTimeout;
         private Region    region;
         private String    awsStackEndpoint;
-
+        
         public Builder(SqsClient sqsClient){
             this.sqsClient = sqsClient;
         }
-
+        
         public Builder setECSClient(EcsClient ecsClient) {
             this.ecsClient = ecsClient;
             return this;
         }
-
+        
         public Builder setRequestQueueUrl(String requestQueueUrl) {
             this.requestQueueUrl = requestQueueUrl;
             return this;
         }
-
+        
         public Builder setResponseQueueUrl(String responseQueueUrl) {
             this.responseQueueUrl = responseQueueUrl;
             return this;
         }
-
+        
         public Builder setAwsStackEndpoint(String aws_stack_endpoint){
             this.awsStackEndpoint = aws_stack_endpoint;
             return this;
         }
-
+        
         public Builder setRegion(Region region){
             this.region = region;
             return this;
         }
-
-
+        
+        
         public Builder debug(boolean debug){
             this.debug = debug;
             return this;
         }
-
+        
         public Builder setMessageRetrievalSize(int messageRetrievalSize){
             this.messageRetrievalSize = messageRetrievalSize;
             return this;
         }
-
+        
         public Builder setApolloUrl(String apolloUrl){
             this.apolloUrl = apolloUrl;
             return this;
         }
-
+        
         public Builder setMessageQueryTimeout(int messageQueryTimeout){
             this.messageQueryTimeout = messageQueryTimeout;
             return this;
         }
-
-
+        
+        
         public Consumer build(){
             Consumer build = new Consumer();
-
+            
             build.sqsClient      = this.sqsClient;
             build.ecsClient      = this.ecsClient;
             build.apolloUrl      = this.apolloUrl;
@@ -150,31 +153,31 @@ public class Consumer implements Runnable {
             build.region               = this.region;
             build.awsStackEndpoint     = this.awsStackEndpoint;
             build.running              = true;
-            build.algorithms           = new HashMap<>();
-
+            build.privateQueue = new ConcurrentLinkedQueue<String>();
+            
             return build;
         }
-
+        
     }
-
+    
     public void consumerSleep(int seconds){
         try                            { TimeUnit.SECONDS.sleep(seconds); }
         catch (InterruptedException e) { e.printStackTrace(); }
     }
-
-
+    
+    
     public void run() {
         int counter = 0;
-
+        
         // Ensure queues exist
         this.createConnectionQueues();
-
+        
         while (this.running) {
             System.out.println("---> Sleep Iteration: " + counter);
             System.out.println("Current State: " + this.currentState);
-
+            
             List<Map<String, String>> messagesContents = new ArrayList<>();
-
+            
             // Check if timers are expired for different states
             this.checkTimers();
             
@@ -184,7 +187,7 @@ public class Consumer implements Runnable {
             connectionMessages = this.getMessages(this.requestQueueUrl, 3, 5);
             connectionMessages = this.handleMessages(this.requestQueueUrl, connectionMessages);
             messages.addAll(connectionMessages);
-
+            
             // CHECK USER QUEUE
             List<Message> userMessages = new ArrayList<>();
             if (this.userRequestQueueUrl != null) {
@@ -192,15 +195,15 @@ public class Consumer implements Runnable {
                 userMessages = this.handleMessages(this.userRequestQueueUrl, userMessages);
                 messages.addAll(userMessages);
             }
-
+            
             for (Message msg: messages) {
                 HashMap<String, String> msgContents = this.processMessage(msg, true);
                 messagesContents.add(msgContents);
             }
-
+            
             for (Map<String, String> msgContents: messagesContents) {
                 System.out.println(msgContents);
-
+                
                 if(msgContents.containsKey("msgType")){
                     String msgType = msgContents.get("msgType");
                     if (msgType.equals("connectionRequest")) {
@@ -240,57 +243,102 @@ public class Consumer implements Runnable {
             counter++;
         }
     }
+    
+    private boolean queueExists(String queueUrl) {
+        ListQueuesResponse listResponse = this.sqsClient.listQueues();
+        for (String url: listResponse.queueUrls()) {
+            if (queueUrl.equals(url)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean queueExistsByName(String queueName) {
+        ListQueuesResponse listResponse = this.sqsClient.listQueues();
+        for (String url: listResponse.queueUrls()) {
+            String[] nameSplit = url.split("/");
+            String name = nameSplit[nameSplit.length-1];
+            if (queueName.equals(name)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String getQueueArn(String queueUrl) {
+        ArrayList<QueueAttributeName> attrList = new ArrayList<>();
+        attrList.add(QueueAttributeName.QUEUE_ARN);
+        GetQueueAttributesRequest attrRequest = GetQueueAttributesRequest.builder()
+            .queueUrl(queueUrl)
+            .attributeNames(attrList)
+            .build();
+        GetQueueAttributesResponse attrResponse = sqsClient.getQueueAttributes(attrRequest);
+        String queueArn = attrResponse.attributes().get(QueueAttributeName.QUEUE_ARN);
+        return queueArn;
+    }
+
+    private String getQueueUrl(String queueName) {
+        GetQueueUrlRequest request = GetQueueUrlRequest.builder()
+            .queueName(queueName)
+            .build();
+        GetQueueUrlResponse response = this.sqsClient.getQueueUrl(request);
+        return response.queueUrl();
+    }
 
     private void createConnectionQueues() {
         String[] requestQueueUrls = this.requestQueueUrl.split("/");
         String requestQueueName = requestQueueUrls[requestQueueUrls.length-1];
 
-        CreateQueueRequest deadQueueRequest = CreateQueueRequest.builder()
-            .queueName("dead-letter")
-            .build();
-        CreateQueueResponse response = sqsClient.createQueue(deadQueueRequest);
-        String deadQueueUrl = response.queueUrl();
-        ArrayList<QueueAttributeName> attrList = new ArrayList<>();
-        attrList.add(QueueAttributeName.QUEUE_ARN);
-        GetQueueAttributesRequest attrRequest = GetQueueAttributesRequest.builder()
-            .queueUrl(deadQueueUrl)
-            .attributeNames(attrList)
-            .build();
-        GetQueueAttributesResponse attrResponse = sqsClient.getQueueAttributes(attrRequest);
-        String deadQueueArn = attrResponse.attributes().get(QueueAttributeName.QUEUE_ARN);
+        String deadQueueArn = "";
+        if (!this.queueExistsByName("dead-letter")) {
+            CreateQueueRequest deadQueueRequest = CreateQueueRequest.builder()
+                .queueName("dead-letter")
+                .build();
+            CreateQueueResponse response = sqsClient.createQueue(deadQueueRequest);
+            String deadQueueUrl = response.queueUrl();
+            deadQueueArn = this.getQueueArn(deadQueueUrl);
+        }
+        else {
+            String deadQueueUrl = this.getQueueUrl("dead-letter");
+            deadQueueArn = this.getQueueArn(deadQueueUrl);
+        }
 
         Map<QueueAttributeName, String> queueAttrs = new HashMap<>();
         queueAttrs.put(QueueAttributeName.MESSAGE_RETENTION_PERIOD, Integer.toString(5*60));
         queueAttrs.put(QueueAttributeName.REDRIVE_POLICY, "{\"maxReceiveCount\":\"3\", \"deadLetterTargetArn\":\"" + deadQueueArn + "\"}");
-        CreateQueueRequest createQueueRequest = CreateQueueRequest.builder()
-            .queueName(requestQueueName)
-            .attributes(queueAttrs)
-            .build();
-        response = sqsClient.createQueue(createQueueRequest);
-        String requestQueueUrl = response.queueUrl();
+        if (!this.queueExists(this.requestQueueUrl)) {
+            CreateQueueRequest createQueueRequest = CreateQueueRequest.builder()
+                .queueName(requestQueueName)
+                .attributes(queueAttrs)
+                .build();
+            CreateQueueResponse response = sqsClient.createQueue(createQueueRequest);
+        }
         SetQueueAttributesRequest setAttrReq = SetQueueAttributesRequest.builder()
-            .queueUrl(requestQueueUrl)
+            .queueUrl(this.requestQueueUrl)
             .attributes(queueAttrs)
             .build();
         sqsClient.setQueueAttributes(setAttrReq);
+        
 
         String[] responseQueueUrls = this.responseQueueUrl.split("/");
         String responseQueueName = responseQueueUrls[responseQueueUrls.length-1];
-        createQueueRequest = CreateQueueRequest.builder()
-            .queueName(responseQueueName)
-            .attributes(queueAttrs)
-            .build();
-        response = sqsClient.createQueue(createQueueRequest);
-        String responseQueueUrl = response.queueUrl();
+        if (!this.queueExists(this.responseQueueUrl)) {
+            CreateQueueRequest createQueueRequest = CreateQueueRequest.builder()
+                .queueName(responseQueueName)
+                .attributes(queueAttrs)
+                .build();
+                CreateQueueResponse response = sqsClient.createQueue(createQueueRequest);
+        }
         setAttrReq = SetQueueAttributesRequest.builder()
-            .queueUrl(responseQueueUrl)
+            .queueUrl(this.responseQueueUrl)
             .attributes(queueAttrs)
             .build();
         sqsClient.setQueueAttributes(setAttrReq);
 
         this.deadLetterQueueArn = deadQueueArn;
     }
-
+    
     private void checkTimers() {
         switch (this.currentState) {
             case WAITING_FOR_USER:
@@ -316,7 +364,7 @@ public class Consumer implements Runnable {
                 break;
         }
     }
-
+    
     private List<Message> handleMessages(String queueUrl, List<Message> messages) {
         List<Message> processedMessages = new ArrayList<>();
         for (Message msg: messages) {
@@ -336,7 +384,7 @@ public class Consumer implements Runnable {
         }
         return processedMessages;
     }
-
+    
     // Filter valid messages based on the current state of the system
     private boolean isMessageAllowed(Map<String, String> msgContents) {
         String msgType = msgContents.get("msgType");
@@ -365,16 +413,16 @@ public class Consumer implements Runnable {
         }
         return isAllowed;
     }
-
-
+    
+    
     // ---> MESSAGE TYPES
     private void msgTypeConnectionRequest(Map<String, String> msgContents) {
         String userId = msgContents.get("user_id");
         this.userId = Integer.parseInt(userId);
-
+        
         // Create queues for private communication
         QueueUrls queueUrls = createUserQueues(userId);
-
+        
         final Map<String, MessageAttributeValue> messageAttributes = new HashMap<>();
         messageAttributes.put("msgType",
                 MessageAttributeValue.builder()
@@ -424,11 +472,11 @@ public class Consumer implements Runnable {
         this.userResponseQueueUrl = queueUrls.responseUrl;
         this.lastPingTime = System.currentTimeMillis();
     }
-
+    
     private void msgTypeConnectionAck(Map<String, String> msgContents) {
         String receivedUUID = msgContents.get("UUID");
         String vassarUrl = msgContents.get("vassar_url");
-
+        
         if (receivedUUID.equals(this.uuid)) {
             this.currentState = State.READY;
             this.vassarRequestQueueUrl = vassarUrl;
@@ -437,7 +485,7 @@ public class Consumer implements Runnable {
             System.out.println("UUID does not match!");
         }
     }
-
+    
     private void msgTypeStatusCheck(Map<String, String> msgContents) {
         final Map<String, MessageAttributeValue> messageAttributes = new HashMap<>();
         messageAttributes.put("msgType",
@@ -464,7 +512,7 @@ public class Consumer implements Runnable {
                         .stringValue(currentStatus)
                         .build()
         );
-
+        
         this.sqsClient.sendMessage(SendMessageRequest.builder()
                 .queueUrl(this.userResponseQueueUrl)
                 .messageBody("ga_message")
@@ -473,94 +521,92 @@ public class Consumer implements Runnable {
                 .build());
         this.lastPingTime = System.currentTimeMillis();
     }
-
+    
     private void msgTypePing(Map<String, String> msgContents) {
         this.lastPingTime = System.currentTimeMillis();
+        this.privateQueue.add("ping");
+        // Send ping ack back
+        final Map<String, MessageAttributeValue> messageAttributes = new HashMap<>();
+        messageAttributes.put("msgType",
+                              MessageAttributeValue.builder()
+                                .dataType("String")
+                                .stringValue("pingAck")
+                                .build()
+        );
+        messageAttributes.put("UUID",
+                              MessageAttributeValue.builder()
+                                .dataType("String")
+                                .stringValue(this.uuid)
+                                .build()
+        );
+        this.sqsClient.sendMessage(SendMessageRequest.builder()
+                                    .queueUrl(this.userResponseQueueUrl)
+                                    .messageBody("ga_message")
+                                    .messageAttributes(messageAttributes)
+                                    .delaySeconds(0)
+                                    .build());
     }
 
     // ---> ALGORITHMS
-    private void msgTypeStartGa(Map<String, String> msgContents){
-        deleteAllDoneGAs();
-
+    private void msgTypeStartGa(Map<String, String> msgContents) {  
         String maxEvals  = msgContents.get("maxEvals");
         String crossoverProbability  = msgContents.get("crossoverProbability");
         String mutationProbability  = msgContents.get("mutationProbability");
-        String group_id  = msgContents.get("group_id");
-        String problem_id  = msgContents.get("problem_id");
-        String ga_id  = msgContents.get("ga_id");
-
+        int groupId  = Integer.parseInt(msgContents.get("group_id"));
+        int problemId  = Integer.parseInt(msgContents.get("problem_id"));
+        int datasetId  = Integer.parseInt(msgContents.get("dataset_id"));
+        
         System.out.println("\n-------------------- ALGORITHM REQUEST --------------------");
         System.out.println("---------------> MAX EVALS: " + maxEvals);
         System.out.println("---> CROSSOVER PROBABILITY: " + crossoverProbability);
         System.out.println("----> MUTATION PROBABILITY: " + mutationProbability);
-        System.out.println("----------------> GROUP ID: " + group_id);
-        System.out.println("--------------> PROBLEM ID: " + problem_id);
+        System.out.println("----------------> GROUP ID: " + groupId);
+        System.out.println("--------------> PROBLEM ID: " + problemId);
+        System.out.println("--------------> DATASET ID: " + datasetId);
         System.out.println("--------------> APOLLO URL: " + this.apolloUrl);
         System.out.println("------> AWS STACK ENDPOINT: " + this.awsStackEndpoint);
         System.out.println("--------> VASSAR QUEUE URL: " + this.vassarRequestQueueUrl);
-        System.out.println("-------------------> GA ID: " + ga_id);
         System.out.println("----------------------------------------------------------\n");
         //this.consumerSleep(3);
-
+        
         OkHttpClient http   = new OkHttpClient.Builder().build();
         ApolloClient apollo = ApolloClient.builder().serverUrl(this.apolloUrl).okHttpClient(http).build();
-
+        
         SqsClientBuilder sqsClientBuilder = SqsClient.builder()
                                                      .region(this.region);
         if (awsStackEndpoint != null) {
             sqsClientBuilder.endpointOverride(URI.create(this.awsStackEndpoint));
         }
         final SqsClient sqsClient = sqsClientBuilder.build();
-
-        Algorithm process = new Algorithm.Builder(this.vassarRequestQueueUrl)
-                .setGaID(ga_id)
+        
+        Algorithm process = new Algorithm.Builder(this.userResponseQueueUrl, this.vassarRequestQueueUrl)
                 .setSqsClient(sqsClient)
-                .setProblemId(Integer.parseInt(problem_id))
+                .setGroupId(groupId)
+                .setProblemId(problemId)
+                .setDatasetId(datasetId)
                 .setApolloClient(apollo)
                 .setMaxEvals(Integer.parseInt(maxEvals))
                 .setCrossoverProbability(Double.parseDouble(crossoverProbability))
                 .setMutationProbability(Double.parseDouble(mutationProbability))
-                .getProblemData(Integer.parseInt(problem_id))
+                .setPrivateQueue(this.privateQueue)
+                .getProblemData(problemId, datasetId)
                 .build();
 
         // RUN CONSUMER
-        Thread algorithm_thread = new Thread(process);
-
-        this.algorithms.put(String.valueOf(ga_id), new Thread(process));
-        this.algorithms.get(String.valueOf(ga_id)).start();
+        this.algorithm = new Thread(process);
+        this.algorithm.start();
     }
 
-    private int msgTypeStopGa(Map<String, String> msgContents){
-        String id  = msgContents.get("ga_id");
-
-        System.out.println("---> STOPPING GA: " + id);
-
-        if (this.algorithms.containsKey(id) && this.algorithms.get(id).isAlive())  {
-            ConnectionFactory factory = new ConnectionFactory();
-            factory.setHost(System.getenv("RABBITMQ_HOST"));
-            String queueName = id + "_brainga";
-
-            try (Connection connection = factory.newConnection(); Channel channel = connection.createChannel()) {
-                channel.queueDeclare(queueName, false, false, false, null);
-                String message = "close";
-                channel.basicPublish("", queueName, null, message.getBytes("UTF-8"));
-            }
-            catch (Exception e) {
-                e.printStackTrace();
-            }
+    private int msgTypeStopGa(Map<String, String> msgContents) {
+        System.out.println("---> STOPPING GA");
+        
+        if (this.algorithm != null && this.algorithm.isAlive()) {
+            this.privateQueue.add("stop");
             return 0;
         }
-
-        // Remove all dead Threads
-        deleteAllDoneGAs();
-
+        
         return 1;
     }
-
-    private void deleteAllDoneGAs() {
-        this.algorithms.entrySet().removeIf(entry -> !entry.getValue().isAlive());
-    }
-
 
     // ---> MESSAGE FLOW
     // 1.
@@ -598,9 +644,9 @@ public class Consumer implements Runnable {
     private void deleteMessages(List<Message> messages, String queueUrl) {
         for (Message message : messages) {
             DeleteMessageRequest deleteMessageRequest = DeleteMessageRequest.builder()
-                    .queueUrl(queueUrl)
-                    .receiptHandle(message.receiptHandle())
-                    .build();
+            .queueUrl(queueUrl)
+            .receiptHandle(message.receiptHandle())
+            .build();
             this.sqsClient.deleteMessage(deleteMessageRequest);
         }
     }
@@ -616,42 +662,55 @@ public class Consumer implements Runnable {
         Map<QueueAttributeName, String> queueAttrs = new HashMap<>();
         queueAttrs.put(QueueAttributeName.MESSAGE_RETENTION_PERIOD, Integer.toString(5*60));
         queueAttrs.put(QueueAttributeName.REDRIVE_POLICY, "{\"maxReceiveCount\":\"3\", \"deadLetterTargetArn\":\"" + this.deadLetterQueueArn + "\"}");
-        CreateQueueRequest createQueueRequest = CreateQueueRequest.builder()
-            .queueName(requestQueueName)
-            .attributes(queueAttrs)
-            .build();
-        CreateQueueResponse response = sqsClient.createQueue(createQueueRequest);
-        String requestQueueUrl = response.queueUrl();
-
-        SetQueueAttributesRequest setAttrReq = SetQueueAttributesRequest.builder()
-            .queueUrl(requestQueueUrl)
-            .attributes(queueAttrs)
-            .build();
-        sqsClient.setQueueAttributes(setAttrReq);
-
-        createQueueRequest = CreateQueueRequest.builder()
-            .queueName(responseQueueName)
-            .attributes(queueAttrs)
-            .build();
-        response = sqsClient.createQueue(createQueueRequest);
-        String responseQueueUrl = response.queueUrl();
-
-        setAttrReq = SetQueueAttributesRequest.builder()
-            .queueUrl(responseQueueUrl)
-            .attributes(queueAttrs)
-            .build();
-        sqsClient.setQueueAttributes(setAttrReq);
-
+        
+        String newUserRequestQueueUrl = "";
+        if (!this.queueExistsByName(requestQueueName)) {
+            CreateQueueRequest createQueueRequest = CreateQueueRequest.builder()
+                .queueName(requestQueueName)
+                .attributes(queueAttrs)
+                .build();
+            CreateQueueResponse response = this.sqsClient.createQueue(createQueueRequest);
+            newUserRequestQueueUrl = response.queueUrl();
+        }
+        else {
+            newUserRequestQueueUrl = this.getQueueUrl(requestQueueName);
+            SetQueueAttributesRequest setAttrReq = SetQueueAttributesRequest.builder()
+                .queueUrl(newUserRequestQueueUrl)
+                .attributes(queueAttrs)
+                .build();
+            this.sqsClient.setQueueAttributes(setAttrReq);
+        }
+        
+        String newUserResponseQueueUrl = "";
+        if (!this.queueExistsByName(responseQueueName)) {
+            CreateQueueRequest createQueueRequest = CreateQueueRequest.builder()
+                .queueName(responseQueueName)
+                .attributes(queueAttrs)
+                .build();
+            CreateQueueResponse response = this.sqsClient.createQueue(createQueueRequest);
+            newUserResponseQueueUrl = response.queueUrl();
+        }
+        else {
+            newUserResponseQueueUrl = this.getQueueUrl(responseQueueName);
+            SetQueueAttributesRequest setAttrReq = SetQueueAttributesRequest.builder()
+                .queueUrl(newUserResponseQueueUrl)
+                .attributes(queueAttrs)
+                .build();
+            this.sqsClient.setQueueAttributes(setAttrReq);
+        }
+        
         QueueUrls returnVal = new QueueUrls();
-        returnVal.requestUrl = requestQueueUrl;
-        returnVal.responseUrl = responseQueueUrl;
-
+        returnVal.requestUrl = newUserRequestQueueUrl;
+        returnVal.responseUrl = newUserResponseQueueUrl;
+        
         return returnVal;
     }
 
     private void downsizeAwsService() {
         // Only do this if in AWS
-        if (System.getenv("DEPLOYMENT_TYPE").equals("AWS")) {
+        long timeSinceLastRequest = System.currentTimeMillis() - this.lastDownsizeRequestTime;
+        if (System.getenv("DEPLOYMENT_TYPE").equals("AWS") && timeSinceLastRequest > 5*60*1000) {
+            this.lastDownsizeRequestTime = System.currentTimeMillis();
             // Check service for number of tasks
             String clusterArn = System.getenv("CLUSTER_ARN");
             String serviceArn = System.getenv("SERVICE_ARN");
@@ -671,7 +730,7 @@ public class Consumer implements Runnable {
                                                                              .service(serviceArn)
                                                                              .build();
                     UpdateServiceResponse updateResponse = this.ecsClient.updateService(updateRequest);
-
+                    
                     // Close myself as the extra task
                     String taskArn = getTaskArn();
                     StopTaskRequest stopRequest = StopTaskRequest.builder()
@@ -689,44 +748,41 @@ public class Consumer implements Runnable {
         try {
             String baseUrl = System.getenv("ECS_CONTAINER_METADATA_URI_V4");
             URL url = new URL(baseUrl + "/task");
-
+            
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("GET");
             conn.connect();
-
+            
             //Getting the response code
             int responsecode = conn.getResponseCode();
-
+            
             if (responsecode != 200) {
                 throw new RuntimeException("HttpResponseCode: " + responsecode);
             }
             else {
-
                 String inline = "";
                 Scanner scanner = new Scanner(url.openStream());
-
+                
                 //Write all the JSON data into a string using a scanner
                 while (scanner.hasNext()) {
                     inline += scanner.nextLine();
                 }
-
+                
                 //Close the scanner
                 scanner.close();
-
+                
                 //Using the JSON simple library parse the string into a json object
                 JSONParser parse = new JSONParser();
                 JSONObject responseObj = (JSONObject) parse.parse(inline);
-
+                
                 //Get the required object from the above created object
                 taskArn = (String)responseObj.get("TaskARN");
             }
             conn.disconnect();
-
+            
         } catch (Exception e) {
             e.printStackTrace();
         }
         return taskArn;
     }
-
-
 }

@@ -9,9 +9,6 @@ import com.apollographql.apollo.ApolloCall;
 import com.apollographql.apollo.ApolloClient;
 import com.apollographql.apollo.api.Response;
 import com.apollographql.apollo.rx2.Rx2Apollo;
-import com.rabbitmq.client.Channel;
-import com.rabbitmq.client.Connection;
-import com.rabbitmq.client.ConnectionFactory;
 import io.reactivex.Observable;
 import org.moeaframework.algorithm.EpsilonMOEA;
 import org.moeaframework.core.*;
@@ -26,15 +23,19 @@ import org.moeaframework.core.variable.BinaryVariable;
 import org.moeaframework.util.TypedProperties;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.*;
 
 import com.algorithm.ArchitectureQuery;
 import seakers.architecture.operators.IntegerUM;
 import software.amazon.awssdk.services.sqs.SqsClient;
+import software.amazon.awssdk.services.sqs.model.MessageAttributeValue;
+import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
 
 
-public class Algorithm implements Runnable{
+public class Algorithm implements Runnable {
 
     private int maxEvals;
     private int initialPopSize;
@@ -42,82 +43,100 @@ public class Algorithm implements Runnable{
     private double mutationProbability;
     private TypedProperties properties;
     private String vassarQueueUrl;
+    private String userResponseUrl;
     private Problem assignmentProblem;
     private List<Solution> solutions;
     private int numOrbits;
     private int numInstruments;
-    private int problem_id;
+    private int groupId;
+    private int problemId;
+    private int datasetId;
     private SqsClient sqs;
-    private String ga_id;
     private List<ArchitectureQuery.Item> initialPopulation;
+    private ConcurrentLinkedQueue<String> privateQueue;
 
     private org.moeaframework.core.Algorithm eMOEA;
 
 
-    public static class Builder{
+    public static class Builder {
 
         private int maxEvals;
         private int initialPopSize;
         private double crossoverProbability;
         private double mutationProbability;
         private String vassarQueueUrl;
+        private String userResponseUrl;
         private ApolloClient apollo;
         private int numOrbits;
         private int numInstruments;
-        private int problem_id;
+        private int groupId;
+        private int problemId;
+        private int datasetId;
         private SqsClient sqs;
-        private String ga_id;
         private List<ArchitectureQuery.Item> initialPopulation;
+        private ConcurrentLinkedQueue<String> privateQueue;
 
-        public Builder(String vassarQueueUrl){
+        public Builder(String userResponseUrl, String vassarQueueUrl) {
+            this.userResponseUrl = userResponseUrl;
             this.vassarQueueUrl = vassarQueueUrl;
         }
 
-        public Builder setApolloClient(ApolloClient client){
+        public Builder setApolloClient(ApolloClient client) {
             this.apollo = client;
             return this;
         }
 
-        public Builder setGaID(String ga_id){
-            this.ga_id = ga_id;
-            return this;
-        }
-
-        public Builder setMaxEvals(int maxEvals){
+        public Builder setMaxEvals(int maxEvals) {
             this.maxEvals = maxEvals;
             return this;
         }
 
-        public Builder setSqsClient(SqsClient sqs){
+        public Builder setSqsClient(SqsClient sqs) {
             this.sqs = sqs;
             return this;
         }
 
-        public Builder setProblemId(int problem_id){
-            this.problem_id = problem_id;
+        public Builder setGroupId(int groupId) {
+            this.groupId = groupId;
             return this;
         }
 
-        public Builder setCrossoverProbability(double crossoverProbability){
+        public Builder setProblemId(int problemId) {
+            this.problemId = problemId;
+            return this;
+        }
+
+        public Builder setDatasetId(int datasetId) {
+            this.datasetId = datasetId;
+            return this;
+        }
+
+        public Builder setCrossoverProbability(double crossoverProbability) {
             this.crossoverProbability = crossoverProbability;
             return this;
         }
 
-        public Builder setMutationProbability(double mutationProbability){
+        public Builder setMutationProbability(double mutationProbability) {
             this.mutationProbability = mutationProbability;
             return this;
         }
 
-        private List<ArchitectureQuery.Item> getInitialPopulation(int problem_id){
+        public Builder setPrivateQueue(ConcurrentLinkedQueue<String> privateQueue) {
+            this.privateQueue = privateQueue;
+            return this;
+        }
+
+        private List<ArchitectureQuery.Item> getInitialPopulation(int problemId, int datasetId) {
             ArchitectureQuery architectureQuery = ArchitectureQuery.builder()
-                    .problem_id(problem_id)
+                    .problem_id(problemId)
+                    .dataset_id(datasetId)
                     .build();
             ApolloCall<ArchitectureQuery.Data> apolloCall  = this.apollo.query(architectureQuery);
             Observable<Response<ArchitectureQuery.Data>> observable  = Rx2Apollo.from(apolloCall);
             return observable.blockingFirst().getData().items();
         }
 
-        private int getNumOrbits(int problem_id){
+        private int getNumOrbits(int problem_id) {
             OrbitCountQuery orbitQuery = OrbitCountQuery.builder()
                     .problem_id(problem_id)
                     .build();
@@ -126,7 +145,7 @@ public class Algorithm implements Runnable{
             return observable.blockingFirst().getData().item().aggregate().count();
         }
 
-        private int getNumInstr(int problem_id){
+        private int getNumInstr(int problem_id) {
             InstrumentCountQuery orbitQuery = InstrumentCountQuery.builder()
                     .problem_id(problem_id)
                     .build();
@@ -135,15 +154,15 @@ public class Algorithm implements Runnable{
             return observable.blockingFirst().getData().item().aggregate().count();
         }
 
-        public Builder getProblemData(int problem_id){
+        public Builder getProblemData(int problemId, int datasetId) {
 
             System.out.println("-----> BUILDING INITIAL SOLUTIONS");
 
-            List<ArchitectureQuery.Item> items  = this.getInitialPopulation(problem_id);
+            List<ArchitectureQuery.Item> items  = this.getInitialPopulation(problemId, datasetId);
             this.initialPopulation = items;
             this.initialPopSize    = items.size();
-            this.numOrbits         = this.getNumOrbits(problem_id);
-            this.numInstruments    = this.getNumInstr(problem_id);
+            this.numOrbits         = this.getNumOrbits(problemId);
+            this.numInstruments    = this.getNumInstr(problemId);
 //            this.solutions      = new ArrayList<>(this.initialPopSize);
 //
 //            for(ArchitectureQuery.Item item: items){
@@ -171,19 +190,22 @@ public class Algorithm implements Runnable{
             return this;
         }
 
-        public Algorithm build(){
+        public Algorithm build() {
             Algorithm build = new Algorithm();
 
-            build.ga_id    = this.ga_id;
             build.initialPopSize = this.initialPopSize;
             build.maxEvals = this.maxEvals;
             build.crossoverProbability = this.crossoverProbability;
             build.mutationProbability = this.mutationProbability;
+            build.userResponseUrl = this.userResponseUrl;
             build.vassarQueueUrl = this.vassarQueueUrl;
             build.numOrbits = this.numOrbits;
             build.numInstruments = this.numInstruments;
-            build.problem_id = this.problem_id;
+            build.groupId = this.groupId;
+            build.problemId = this.problemId;
+            build.datasetId = this.datasetId;
             build.initialPopulation = this.initialPopulation;
+            build.privateQueue = this.privateQueue;
 
             build.properties = new TypedProperties();
             build.properties.setInt("maxEvaluations", this.maxEvals);
@@ -191,7 +213,7 @@ public class Algorithm implements Runnable{
             build.properties.setDouble("crossoverProbability", this.crossoverProbability);
             build.properties.setDouble("mutationProbability", this.mutationProbability);
 
-            build.assignmentProblem = new AssigningProblem(this.sqs, apollo, new int[]{1}, this.numOrbits, this.numInstruments, this.vassarQueueUrl, problem_id);
+            build.assignmentProblem = new AssigningProblem(this.sqs, apollo, new int[]{1}, this.numOrbits, this.numInstruments, this.vassarQueueUrl, problemId, datasetId);
 
 
 //            InjectedInitialization initialization = new InjectedInitialization(assignmentProblem, this.solutions.size(), this.solutions);
@@ -217,7 +239,7 @@ public class Algorithm implements Runnable{
     }
 
 
-    private List<Boolean> stringToBool(String inputs){
+    private List<Boolean> stringToBool(String inputs) {
         List<Boolean> bool_list = new ArrayList<>();
         char[] char_inputs = inputs.toCharArray();
         for(char input: char_inputs){
@@ -231,36 +253,36 @@ public class Algorithm implements Runnable{
         return bool_list;
     }
 
-    public void buildInitialSolutions(){
+    public void buildInitialSolutions() {
         System.out.println("\n-------------------------------------------------------- INITIAL SOLUTIONS");
 
         this.solutions = new ArrayList<>(this.initialPopSize);
 
         for(ArchitectureQuery.Item item: this.initialPopulation){
 
-            String        string_inputs = item.input();
+            String        stringInputs  = item.input();
             double        science       = Double.parseDouble(item.science().toString());
             double        cost          = Double.parseDouble(item.cost().toString());
-            List<Boolean> inputs        = this.stringToBool(string_inputs);
+            List<Boolean> inputs        = this.stringToBool(stringInputs);
 
-            AssigningArchitecture new_arch = new AssigningArchitecture(new int[]{1}, this.numInstruments, this.numOrbits, 2);
+            AssigningArchitecture newArch = new AssigningArchitecture(new int[]{1}, this.numInstruments, this.numOrbits, 2);
 
-            for (int j = 1; j < new_arch.getNumberOfVariables(); ++j) {
+            for (int j = 1; j < newArch.getNumberOfVariables(); ++j) {
                 BinaryVariable var = new BinaryVariable(1);
                 var.set(0, inputs.get(j-1));
-                new_arch.setVariable(j, var);
+                newArch.setVariable(j, var);
             }
-            new_arch.setObjective(0, -science);
-            new_arch.setObjective(1, cost);
-            new_arch.setAlreadyEvaluated(true);
+            newArch.setObjective(0, -science);
+            newArch.setObjective(1, cost);
+            newArch.setAlreadyEvaluated(true);
 
-            System.out.println("---> SOLUTION: " + string_inputs + " " + science + " " + cost);
+            System.out.println("---> SOLUTION: " + stringInputs + " " + science + " " + cost);
 
-            this.solutions.add(new_arch);
+            this.solutions.add(newArch);
         }
     }
 
-    public void initialize(){
+    public void initialize() {
 
         // BUILD: this.solutions
         this.buildInitialSolutions();
@@ -284,11 +306,7 @@ public class Algorithm implements Runnable{
         System.out.println("----> eMOEA BUILT");
     }
 
-
-
-
-    public void run(){
-
+    public void run() {
         // INITIALIZE
         this.initialize();
 
@@ -296,21 +314,21 @@ public class Algorithm implements Runnable{
         CompletionService<org.moeaframework.core.Algorithm> ecs    = new ExecutorCompletionService<>(pool);
 
         // SUBMIT MOEA
-        ecs.submit(new BinaryInputInteractiveSearch(this.eMOEA, this.properties, this.ga_id));
+        ecs.submit(new BinaryInputInteractiveSearch(this.eMOEA, this.properties, this.privateQueue, this.sqs, this.userResponseUrl));
 
-
-        ConnectionFactory factory = new ConnectionFactory();
-        factory.setHost(System.getenv("RABBITMQ_HOST"));
-        String sendbackQueueName  = this.ga_id + "_gabrain";
-
-        try (Connection connection = factory.newConnection(); Channel channel = connection.createChannel()) {
-            channel.queueDeclare(sendbackQueueName, false, false, false, null);
-            String message = "{ \"type\": \"ga_started\" }";
-            channel.basicPublish("", sendbackQueueName, null, message.getBytes("UTF-8"));
-        }
-        catch (Exception e) {
-            e.printStackTrace();
-        }
+        final Map<String, MessageAttributeValue> messageAttributes = new HashMap<>();
+        messageAttributes.put("msgType",
+                MessageAttributeValue.builder()
+                        .dataType("String")
+                        .stringValue("gaStarted")
+                        .build()
+        );
+        this.sqs.sendMessage(SendMessageRequest.builder()
+                .queueUrl(this.userResponseUrl)
+                .messageBody("ga_message")
+                .messageAttributes(messageAttributes)
+                .delaySeconds(0)
+                .build());
 
         try {
             org.moeaframework.core.Algorithm alg = ecs.take().get();
@@ -318,15 +336,19 @@ public class Algorithm implements Runnable{
             ex.printStackTrace();
         }
 
-        // Notify listeners of new architectures in username channel
-        try (Connection connection = factory.newConnection(); Channel channel = connection.createChannel()) {
-            channel.queueDeclare(sendbackQueueName, false, false, false, null);
-            String message = "{ \"type\": \"ga_done\" }";
-            channel.basicPublish("", sendbackQueueName, null, message.getBytes("UTF-8"));
-        }
-        catch (Exception e) {
-            e.printStackTrace();
-        }
+        final Map<String, MessageAttributeValue> messageAttributes2 = new HashMap<>();
+        messageAttributes2.put("msgType",
+                MessageAttributeValue.builder()
+                        .dataType("String")
+                        .stringValue("gaEnded")
+                        .build()
+        );
+        this.sqs.sendMessage(SendMessageRequest.builder()
+                .queueUrl(this.userResponseUrl)
+                .messageBody("ga_message")
+                .messageAttributes(messageAttributes2)
+                .delaySeconds(0)
+                .build());
 
         pool.shutdown();
 

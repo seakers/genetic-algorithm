@@ -106,21 +106,6 @@ public class App {
                                         .setApolloUrl(apolloUrl)
                                         .build();
 
-
-        // RUN CONSUMER
-        Thread consumer_thread = new Thread(consumer);
-        consumer_thread.start();
-
-
-
-
-        try{
-            consumer_thread.join();
-        }
-        catch(Exception e){
-            System.out.println("---> Error joining genetic algorithm thread");
-        }
-
+        consumer.run();
     }
-
 }

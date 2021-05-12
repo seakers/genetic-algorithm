@@ -43,7 +43,9 @@ public class AssigningProblem extends AbstractProblem implements SystemArchitect
 
     private final String queueUrl;
 
-    private final int problem_id;
+    private final int problemId;
+
+    private final int datasetId;
 
     private final double dcThreshold = 0.5;
 
@@ -62,7 +64,7 @@ public class AssigningProblem extends AbstractProblem implements SystemArchitect
     /**
      * @param alternativesForNumberOfSatellites
      */
-    public AssigningProblem(SqsClient sqs, ApolloClient apollo, int[] alternativesForNumberOfSatellites, int numOrbits, int numInstruments, String queueUrl, int problem_id) {
+    public AssigningProblem(SqsClient sqs, ApolloClient apollo, int[] alternativesForNumberOfSatellites, int numOrbits, int numInstruments, String queueUrl, int problemId, int datasetId) {
         //2 decisions for Choosing and Assigning Patterns
         super(1 + numInstruments * numOrbits, 2);
         this.numInstruments = numInstruments;
@@ -70,7 +72,8 @@ public class AssigningProblem extends AbstractProblem implements SystemArchitect
         this.sqs = sqs;
         this.queueUrl = queueUrl;
         this.alternativesForNumberOfSatellites = alternativesForNumberOfSatellites;
-        this.problem_id = problem_id;
+        this.problemId = problemId;
+        this.datasetId = datasetId;
         this.apollo = apollo;
     }
 
@@ -107,49 +110,54 @@ public class AssigningProblem extends AbstractProblem implements SystemArchitect
 
         System.out.println("---> EVALUATING ARCHITECTURE: " + input);
 
-
-
-        // Check to see if that architecture already exists
-
-
-
-        // Send message to vassar
-        final Map<String, MessageAttributeValue> messageAttributes = new HashMap<>();
-        messageAttributes.put("msgType",
-                MessageAttributeValue.builder()
-                        .dataType("String")
-                        .stringValue("evaluate")
-                        .build()
-        );
-        messageAttributes.put("input",
-                MessageAttributeValue.builder()
-                        .dataType("String")
-                        .stringValue(input)
-                        .build()
-        );
-        messageAttributes.put("ga",
-                MessageAttributeValue.builder()
-                        .dataType("String")
-                        .stringValue("true")
-                        .build()
-        );
-        System.out.println("---> Processing architecure");
-        this.sqs.sendMessage(SendMessageRequest.builder()
-                                            .queueUrl(this.queueUrl)
-                                            .messageBody("ga_message")
-                                            .messageAttributes(messageAttributes)
-                                            .delaySeconds(this.delay)
-                                            .build());
-
-        // Now wait for response
-        try{
-            while(!this.runningStatusCheck(input)){
-                System.out.println("---> processing...");
-                TimeUnit.SECONDS.sleep(2);
-            }
+        if (this.runningStatusCheck(input)) {
+            arch.setAlreadyExisted(true);
         }
-        catch(Exception e){
-            System.out.println("---> Error evaluating architecture!!!!");
+        else {
+            // Send message to vassar
+            final Map<String, MessageAttributeValue> messageAttributes = new HashMap<>();
+            messageAttributes.put("msgType",
+                    MessageAttributeValue.builder()
+                            .dataType("String")
+                            .stringValue("evaluate")
+                            .build()
+            );
+            messageAttributes.put("input",
+                    MessageAttributeValue.builder()
+                            .dataType("String")
+                            .stringValue(input)
+                            .build()
+            );
+            messageAttributes.put("dataset_id",
+                    MessageAttributeValue.builder()
+                            .dataType("String")
+                            .stringValue(String.valueOf(this.datasetId))
+                            .build()
+            );
+            messageAttributes.put("ga",
+                    MessageAttributeValue.builder()
+                            .dataType("String")
+                            .stringValue("true")
+                            .build()
+            );
+            System.out.println("---> Processing architecure");
+            this.sqs.sendMessage(SendMessageRequest.builder()
+                                                .queueUrl(this.queueUrl)
+                                                .messageBody("ga_message")
+                                                .messageAttributes(messageAttributes)
+                                                .delaySeconds(this.delay)
+                                                .build());
+
+            // Now wait for response
+            try{
+                while(!this.runningStatusCheck(input)){
+                    System.out.println("---> processing...");
+                    TimeUnit.SECONDS.sleep(2);
+                }
+            }
+            catch(Exception e){
+                System.out.println("---> Error evaluating architecture!!!!");
+            }
         }
 
         System.out.println("---> Architecture has finished!!!");
@@ -168,7 +176,8 @@ public class AssigningProblem extends AbstractProblem implements SystemArchitect
 
     public boolean runningStatusCheck(String input){
         ArchitectureSubscriptionQuery subQuery = ArchitectureSubscriptionQuery.builder()
-                .problem_id(problem_id)
+                .problem_id(this.problemId)
+                .dataset_id(this.datasetId)
                 .input(input)
                 .build();
         ApolloCall<ArchitectureSubscriptionQuery.Data> apolloCall  = this.apollo.query(subQuery);
@@ -178,7 +187,8 @@ public class AssigningProblem extends AbstractProblem implements SystemArchitect
 
     public SingleArchitectureQuery.Item getArchitecture(String input){
         SingleArchitectureQuery archQuery = SingleArchitectureQuery.builder()
-                                                                    .problem_id(problem_id)
+                                                                    .problem_id(this.problemId)
+                                                                    .dataset_id(this.datasetId)
                                                                     .input(input)
                                                                     .build();
         ApolloCall<SingleArchitectureQuery.Data> apolloCall  = this.apollo.query(archQuery);

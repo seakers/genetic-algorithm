@@ -1,8 +1,3 @@
-
-
-
-
-
 query OrbitCount($problem_id: Int!){
     item: Join__Problem_Orbit_aggregate(where: {problem_id: {_eq: $problem_id}}) {
         aggregate {
@@ -11,6 +6,7 @@ query OrbitCount($problem_id: Int!){
     }
 }
 
+
 query InstrumentCount($problem_id: Int!){
     item: Join__Problem_Instrument_aggregate(where: {problem_id: {_eq: $problem_id}}) {
         aggregate {
@@ -18,7 +14,6 @@ query InstrumentCount($problem_id: Int!){
         }
     }
 }
-
 
 
 #query Orbit($problem_id: Int!){
@@ -34,27 +29,22 @@ query InstrumentCount($problem_id: Int!){
 #}
 
 
-
-query ArchitectureSubscription($problem_id: Int!, $input: String!){
-    items: Architecture_aggregate(where: {problem_id: {_eq: $problem_id}, input: {_eq: $input}})  {
+query ArchitectureSubscription($problem_id: Int!, $dataset_id: Int!, $input: String!){
+    items: Architecture_aggregate(where: {problem_id: {_eq: $problem_id}, dataset_id: {_eq: $dataset_id} input: {_eq: $input}})  {
         aggregate { count }
     }
 }
 
 
-
-query SingleArchitecture($problem_id: Int!, $input: String!) {
-    items: Architecture (where: {problem_id: {_eq: $problem_id}, input: {_eq: $input}})  {
+query SingleArchitecture($problem_id: Int!, $dataset_id: Int!, $input: String!) {
+    items: Architecture (where: {problem_id: {_eq: $problem_id}, dataset_id: {_eq: $dataset_id}, input: {_eq: $input}})  {
         id input science cost
     }
 }
 
 
-
-
-
-query Architecture($problem_id: Int!) {
-    items: Architecture(where: {problem_id: {_eq: $problem_id}, eval_status: {_eq: true}}) {
+query Architecture($problem_id: Int!, $dataset_id: Int!) {
+    items: Architecture(where: {problem_id: {_eq: $problem_id}, dataset_id: {_eq: $dataset_id}, eval_status: {_eq: true}}) {
         id
         input
         science

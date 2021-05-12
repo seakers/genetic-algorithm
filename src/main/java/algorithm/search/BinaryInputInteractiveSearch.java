@@ -5,15 +5,16 @@
  */
 package algorithm.search;
 
-
+import java.util.ArrayList;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import algorithm.thriftinterface.BinaryInputArchitecture;
+import software.amazon.awssdk.services.sqs.SqsClient;
+
 import com.google.gson.*;
 import org.moeaframework.core.Algorithm;
 import org.moeaframework.core.Solution;
 import org.moeaframework.core.variable.BinaryVariable;
 import org.moeaframework.util.TypedProperties;
-
-import java.util.ArrayList;
 
 /**
  *
@@ -21,8 +22,8 @@ import java.util.ArrayList;
  */
 public class BinaryInputInteractiveSearch extends AbstractInteractiveSearch {
 
-    public BinaryInputInteractiveSearch(Algorithm alg, TypedProperties properties, String id) {
-        super(alg, properties, id);
+    public BinaryInputInteractiveSearch(Algorithm alg, TypedProperties properties, ConcurrentLinkedQueue<String> privateQueue, SqsClient sqsClient, String userQueueUrl) {
+        super(alg, properties, privateQueue, sqsClient, userQueueUrl);
     }
 
     @Override

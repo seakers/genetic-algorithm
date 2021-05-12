@@ -41,6 +41,8 @@ public class AssigningArchitecture extends Architecture {
 
     private boolean alreadyEvaluated;
 
+    private boolean alreadyExisted;
+
     //Constructors
     /**
      * Creates an empty architecture with a default number of satellites.
@@ -58,6 +60,7 @@ public class AssigningArchitecture extends Architecture {
                 createDecisions(alternativesForNumberOfSatellites, numberOfInstruments, numberOfOrbits));
         this.alternativesForNumberOfSatellites = alternativesForNumberOfSatellites;
         this.alreadyEvaluated = false;
+        this.alreadyExisted = false;
     }
 
     private static ArrayList<ArchitecturalDecision> createDecisions(
@@ -85,6 +88,14 @@ public class AssigningArchitecture extends Architecture {
 
     public boolean getAlreadyEvaluated() {
         return this.alreadyEvaluated;
+    }
+
+    public void setAlreadyExisted(boolean alreadyExisted) {
+        this.alreadyExisted = alreadyExisted;
+    }
+
+    public boolean getAlreadyExisted() {
+        return this.alreadyExisted;
     }
 
     @Override
