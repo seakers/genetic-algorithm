@@ -5,6 +5,15 @@ import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.client.GetResponse;
+import com.algorithm.DeleteNonImprovingArchitecturesMutation;
+import com.algorithm.MarkArchitectureAsImprovingHVMutation;
+import com.algorithm.DeleteNonImprovingArchitecturesMutation.Data;
+import com.algorithm.MarkArchitectureAsImprovingHVMutation.Update_Architecture_by_pk;
+import com.apollographql.apollo.ApolloCall;
+import com.apollographql.apollo.ApolloClient;
+import com.apollographql.apollo.api.Response;
+import com.apollographql.apollo.rx2.Rx2Apollo;
+
 import org.moeaframework.algorithm.AbstractEvolutionaryAlgorithm;
 import org.moeaframework.core.Algorithm;
 import org.moeaframework.core.Population;
@@ -12,6 +21,7 @@ import org.moeaframework.core.Solution;
 import org.moeaframework.util.TypedProperties;
 
 import algorithm.search.problems.Assigning.AssigningArchitecture;
+import io.reactivex.Observable;
 import software.amazon.awssdk.services.sqs.SqsClient;
 import software.amazon.awssdk.services.sqs.model.MessageAttributeValue;
 import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
@@ -29,15 +39,19 @@ public abstract class AbstractInteractiveSearch implements Callable<org.moeafram
     private boolean isStopped;
     private ConcurrentLinkedQueue<String> privateQueue;
     private SqsClient sqsClient;
+    private final ApolloClient apollo;
     private String userQueueUrl;
+    private int datasetId;
 
-    public AbstractInteractiveSearch(Algorithm alg, TypedProperties properties, ConcurrentLinkedQueue<String> privateQueue, SqsClient sqsClient, String userQueueUrl) {
+    public AbstractInteractiveSearch(Algorithm alg, TypedProperties properties, ConcurrentLinkedQueue<String> privateQueue, SqsClient sqsClient, ApolloClient apollo, String userQueueUrl, int datasetId) {
         this.alg = alg;
         this.properties = properties;
         this.isStopped = false;
         this.privateQueue = privateQueue;
         this.sqsClient = sqsClient;
+        this.apollo = apollo;
         this.userQueueUrl = userQueueUrl;
+        this.datasetId = datasetId;
     }
 
     @Override
@@ -101,6 +115,9 @@ public abstract class AbstractInteractiveSearch implements Callable<org.moeafram
                     if (!((AssigningArchitecture)newSol).getAlreadyExisted()) {
                         System.out.println("---> Sending new arch!");
                         newSol.setAttribute("NFE", alg.getNumberOfEvaluations());
+
+                        // Mark arch as improves_hv so it shows in frontend
+                        this.markArchitectureAsImprovingHV(((AssigningArchitecture)newSol).getDatabaseId());
     
                         // Notify brain of new GA Architecture for proactive purposes (no need to send arch due to GraphQL)
                         final Map<String, MessageAttributeValue> messageAttributes = new HashMap<>();
@@ -124,6 +141,9 @@ public abstract class AbstractInteractiveSearch implements Callable<org.moeafram
                 }
             }
 
+            // Remove other archs with ga=true, improves_hv=false as not improving
+            Data deletionData = this.deleteNonImprovingArchitectures(this.datasetId);
+
             // Change the archive reference to the new one
             archive = new Population(newArchive);
         }
@@ -133,6 +153,24 @@ public abstract class AbstractInteractiveSearch implements Callable<org.moeafram
         System.out.println("Done with optimization. Execution time: " + ((finishTime - startTime) / 1000) + "s");
 
         return alg;
+    }
+
+    public Update_Architecture_by_pk markArchitectureAsImprovingHV(int databaseId){
+        MarkArchitectureAsImprovingHVMutation archMutation = MarkArchitectureAsImprovingHVMutation.builder()
+                                                                    .id(databaseId)
+                                                                    .build();
+        ApolloCall<MarkArchitectureAsImprovingHVMutation.Data> apolloCall = this.apollo.mutate(archMutation);
+        Observable<Response<MarkArchitectureAsImprovingHVMutation.Data>> observable = Rx2Apollo.from(apolloCall);
+        return observable.blockingFirst().getData().update_Architecture_by_pk();
+    }
+
+    public Data deleteNonImprovingArchitectures(int datasetId){
+        DeleteNonImprovingArchitecturesMutation archMutation = DeleteNonImprovingArchitecturesMutation.builder()
+                                                                    .dataset_id(datasetId)
+                                                                    .build();
+        ApolloCall<DeleteNonImprovingArchitecturesMutation.Data> apolloCall = this.apollo.mutate(archMutation);
+        Observable<Response<DeleteNonImprovingArchitecturesMutation.Data>> observable = Rx2Apollo.from(apolloCall);
+        return observable.blockingFirst().getData();
     }
 
     public abstract JsonElement getJSONArchitecture(Solution architecture);

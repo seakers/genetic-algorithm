@@ -51,3 +51,37 @@ query Architecture($problem_id: Int!, $dataset_id: Int!) {
         cost
     }
 }
+
+mutation MarkArchitectureAsImprovingHV($id: Int! = 10) {
+  update_Architecture_by_pk(pk_columns: {id: $id}, _set: {improve_hv: true}) {
+    id
+    improve_hv
+  }
+}
+
+mutation DeleteNonImprovingArchitectures($dataset_id: Int = 10) {
+  delete_SubobjectiveScoreExplanation(where: {Architecture: {dataset_id: {_eq: $dataset_id}, ga: {_eq: true}, improve_hv: {_eq: false}}}) {
+    affected_rows
+  }
+  delete_ObjectiveScoreExplanation(where: {Architecture: {dataset_id: {_eq: $dataset_id}, ga: {_eq: true}, improve_hv: {_eq: false}}}) {
+    affected_rows
+  }
+  delete_PanelScoreExplanation(where: {Architecture: {dataset_id: {_eq: $dataset_id}, ga: {_eq: true}, improve_hv: {_eq: false}}}) {
+    affected_rows
+  }
+  delete_ArchitectureScoreExplanation(where: {Architecture: {dataset_id: {_eq: $dataset_id}, ga: {_eq: true}, improve_hv: {_eq: false}}}) {
+    affected_rows
+  }
+  delete_ArchitectureBudget(where: {ArchitectureCostInformation: {Architecture: {dataset_id: {_eq: $dataset_id}, ga: {_eq: true}, improve_hv: {_eq: false}}}}) {
+    affected_rows
+  }
+  delete_ArchitecturePayload(where: {ArchitectureCostInformation: {Architecture: {dataset_id: {_eq: $dataset_id}, ga: {_eq: true}, improve_hv: {_eq: false}}}}) {
+    affected_rows
+  }
+  delete_ArchitectureCostInformation(where: {Architecture: {dataset_id: {_eq: $dataset_id}, ga: {_eq: true}, improve_hv: {_eq: false}}}) {
+    affected_rows
+  }
+  delete_Architecture(where: {dataset_id: {_eq: $dataset_id}, improve_hv: {_eq: false}, ga: {_eq: true}}) {
+    affected_rows
+  }
+}

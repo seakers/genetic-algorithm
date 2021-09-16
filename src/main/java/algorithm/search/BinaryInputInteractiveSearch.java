@@ -10,6 +10,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import algorithm.thriftinterface.BinaryInputArchitecture;
 import software.amazon.awssdk.services.sqs.SqsClient;
 
+import com.apollographql.apollo.ApolloClient;
 import com.google.gson.*;
 import org.moeaframework.core.Algorithm;
 import org.moeaframework.core.Solution;
@@ -22,8 +23,8 @@ import org.moeaframework.util.TypedProperties;
  */
 public class BinaryInputInteractiveSearch extends AbstractInteractiveSearch {
 
-    public BinaryInputInteractiveSearch(Algorithm alg, TypedProperties properties, ConcurrentLinkedQueue<String> privateQueue, SqsClient sqsClient, String userQueueUrl) {
-        super(alg, properties, privateQueue, sqsClient, userQueueUrl);
+    public BinaryInputInteractiveSearch(Algorithm alg, TypedProperties properties, ConcurrentLinkedQueue<String> privateQueue, SqsClient sqsClient, ApolloClient apollo, String userQueueUrl, int datasetId) {
+        super(alg, properties, privateQueue, sqsClient, apollo, userQueueUrl, datasetId);
     }
 
     @Override

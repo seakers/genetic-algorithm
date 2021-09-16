@@ -43,6 +43,8 @@ public class AssigningArchitecture extends Architecture {
 
     private boolean alreadyExisted;
 
+    private int databaseId; 
+
     //Constructors
     /**
      * Creates an empty architecture with a default number of satellites.
@@ -96,6 +98,14 @@ public class AssigningArchitecture extends Architecture {
 
     public boolean getAlreadyExisted() {
         return this.alreadyExisted;
+    }
+
+    public void setDatabaseId(int databaseId) {
+        this.databaseId = databaseId;
+    }
+
+    public int getDatabaseId() {
+        return this.databaseId;
     }
 
     @Override

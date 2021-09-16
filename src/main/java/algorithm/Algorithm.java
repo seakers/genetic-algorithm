@@ -46,6 +46,7 @@ public class Algorithm implements Runnable {
     private String userResponseUrl;
     private Problem assignmentProblem;
     private List<Solution> solutions;
+    private ApolloClient apollo;
     private int numOrbits;
     private int numInstruments;
     private int groupId;
@@ -199,11 +200,13 @@ public class Algorithm implements Runnable {
             build.mutationProbability = this.mutationProbability;
             build.userResponseUrl = this.userResponseUrl;
             build.vassarQueueUrl = this.vassarQueueUrl;
+            build.apollo = this.apollo;
             build.numOrbits = this.numOrbits;
             build.numInstruments = this.numInstruments;
             build.groupId = this.groupId;
             build.problemId = this.problemId;
             build.datasetId = this.datasetId;
+            build.sqs = this.sqs;
             build.initialPopulation = this.initialPopulation;
             build.privateQueue = this.privateQueue;
 
@@ -275,6 +278,7 @@ public class Algorithm implements Runnable {
             newArch.setObjective(0, -science);
             newArch.setObjective(1, cost);
             newArch.setAlreadyEvaluated(true);
+            newArch.setDatabaseId(item.id());
 
             System.out.println("---> SOLUTION: " + stringInputs + " " + science + " " + cost);
 
@@ -308,13 +312,15 @@ public class Algorithm implements Runnable {
 
     public void run() {
         // INITIALIZE
+        System.out.println("DEBUG --> Algorithm Response QueueURL: " + this.userResponseUrl);
+
         this.initialize();
 
         ExecutorService                                     pool   = Executors.newFixedThreadPool(1);
         CompletionService<org.moeaframework.core.Algorithm> ecs    = new ExecutorCompletionService<>(pool);
 
         // SUBMIT MOEA
-        ecs.submit(new BinaryInputInteractiveSearch(this.eMOEA, this.properties, this.privateQueue, this.sqs, this.userResponseUrl));
+        ecs.submit(new BinaryInputInteractiveSearch(this.eMOEA, this.properties, this.privateQueue, this.sqs, this.apollo, this.userResponseUrl, this.datasetId));
 
         final Map<String, MessageAttributeValue> messageAttributes = new HashMap<>();
         messageAttributes.put("msgType",

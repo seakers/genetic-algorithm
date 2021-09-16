@@ -171,6 +171,7 @@ public class AssigningProblem extends AbstractProblem implements SystemArchitect
         arch.setObjective(0, -science);
         arch.setObjective(1, cost);
         arch.setAlreadyEvaluated(true);
+        arch.setDatabaseId(result.id());
     }
 
 
