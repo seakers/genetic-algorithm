@@ -28,11 +28,12 @@ query InstrumentCount($problem_id: Int!){
 #    }
 #}
 
-
-query ArchitectureSubscription($problem_id: Int!, $dataset_id: Int!, $input: String!){
-    items: Architecture_aggregate(where: {problem_id: {_eq: $problem_id}, dataset_id: {_eq: $dataset_id} input: {_eq: $input}})  {
-        aggregate { count }
+query ArchitectureSubscription($problem_id: Int!, $dataset_id: Int!, $input: String!) {
+  architecture: Architecture_aggregate(where: {problem_id: {_eq: $problem_id}, dataset_id: {_eq: $dataset_id}, input: {_eq: $input}, ga: {_eq: true}}) {
+    aggregate {
+      count
     }
+  }
 }
 
 

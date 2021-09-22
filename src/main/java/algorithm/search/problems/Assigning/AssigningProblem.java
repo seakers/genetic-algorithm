@@ -183,7 +183,9 @@ public class AssigningProblem extends AbstractProblem implements SystemArchitect
                 .build();
         ApolloCall<ArchitectureSubscriptionQuery.Data> apolloCall  = this.apollo.query(subQuery);
         Observable<Response<ArchitectureSubscriptionQuery.Data>> observable  = Rx2Apollo.from(apolloCall);
-        return (observable.blockingFirst().getData().items().aggregate().count() > 0);
+        ArchitectureSubscriptionQuery.Data data = observable.blockingFirst().getData();
+        return
+            data.architecture().aggregate().count() > 0;
     }
 
     public SingleArchitectureQuery.Item getArchitecture(String input){
