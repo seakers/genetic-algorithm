@@ -41,6 +41,7 @@ public class Algorithm implements Runnable {
     private int initialPopSize;
     private double crossoverProbability;
     private double mutationProbability;
+    private String testedFeature;
     private TypedProperties properties;
     private String vassarQueueUrl;
     private String userResponseUrl;
@@ -65,6 +66,7 @@ public class Algorithm implements Runnable {
         private int initialPopSize;
         private double crossoverProbability;
         private double mutationProbability;
+        private String testedFeature;
         private String vassarQueueUrl;
         private String userResponseUrl;
         private ApolloClient apollo;
@@ -119,6 +121,11 @@ public class Algorithm implements Runnable {
 
         public Builder setMutationProbability(double mutationProbability) {
             this.mutationProbability = mutationProbability;
+            return this;
+        }
+
+        public Builder setTestedFeature(String testedFeature) {
+            this.testedFeature = testedFeature;
             return this;
         }
 
@@ -198,6 +205,7 @@ public class Algorithm implements Runnable {
             build.maxEvals = this.maxEvals;
             build.crossoverProbability = this.crossoverProbability;
             build.mutationProbability = this.mutationProbability;
+            build.testedFeature = this.testedFeature;
             build.userResponseUrl = this.userResponseUrl;
             build.vassarQueueUrl = this.vassarQueueUrl;
             build.apollo = this.apollo;
@@ -302,8 +310,16 @@ public class Algorithm implements Runnable {
 
         Variation singlecross      = new OnePointCrossover(crossoverProbability);
         Variation bitFlip          = new BitFlip(mutationProbability);
-        Variation intergerMutation = new IntegerUM(mutationProbability);
-        CompoundVariation var      = new CompoundVariation(singlecross, bitFlip, intergerMutation);
+        Variation integerMutation = new IntegerUM(mutationProbability);
+        CompoundVariation var;
+        if (this.testedFeature != null) {
+            
+            var = new CompoundVariation(singlecross, bitFlip, integerMutation);
+        }
+        else {
+            var = new CompoundVariation(singlecross, bitFlip, integerMutation);
+        }
+        
 
         // BUILD: MOEA
         this.eMOEA = new EpsilonMOEA(assignmentProblem, population, archive, selection, var, initialization);

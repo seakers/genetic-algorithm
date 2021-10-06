@@ -1,8 +1,10 @@
 plugins {
-    id 'java'
     id 'application'
     id 'com.apollographql.apollo' version '2.5.5'
 }
+
+sourceCompatibility = JavaVersion.VERSION_11
+targetCompatibility = JavaVersion.VERSION_11
 
 repositories {
     mavenCentral()
@@ -20,31 +22,31 @@ dependencies {
     implementation 'software.amazon.awssdk:auth'
 
     // MOEA
-    compile 'org.moeaframework:moeaframework:2.12'
+    implementation 'org.moeaframework:moeaframework:2.12'
 
     // RABBIT-MQ
-    compile 'com.rabbitmq:amqp-client:5.7.3'
+    implementation 'com.rabbitmq:amqp-client:5.7.3'
 
     // GSON
     implementation 'com.googlecode.json-simple:json-simple:1.1.1'
-    compile 'com.google.code.gson:gson:2.8.5'
+    implementation 'com.google.code.gson:gson:2.8.5'
 
     // GRAPHQL
     implementation 'com.apollographql.apollo:apollo-runtime:2.5.5'
     implementation 'com.apollographql.apollo:apollo-rx2-support:2.5.5'
-    compileOnly("org.jetbrains:annotations:16.0.2")
-    testCompileOnly("org.jetbrains:annotations:16.0.2")
+    compileOnly    "org.jetbrains:annotations:16.0.2"
+    testCompileOnly "org.jetbrains:annotations:16.0.2"
 
     // SYSTEM ARCHITECTURE PROBLEMS
-    compile 'seakers:system-architecture-problems:1.0'
+    implementation 'seakers:system-architecture-problems:1.0'
 
     // THRIFT
-    compile 'org.apache.thrift:libthrift:0.12.0'
+    implementation 'org.apache.thrift:libthrift:0.12.0'
 
     // APACHE COMMONS
-    compile 'org.apache.logging.log4j:log4j-api:2.14.1'
-    compile 'org.apache.logging.log4j:log4j-core:2.14.1'
-    compile 'org.apache.logging.log4j:log4j-slf4j-impl:2.14.1'
+    implementation 'org.apache.logging.log4j:log4j-api:2.14.1'
+    implementation 'org.apache.logging.log4j:log4j-core:2.14.1'
+    implementation 'org.apache.logging.log4j:log4j-slf4j-impl:2.14.1'
 
 
 }
@@ -55,11 +57,11 @@ version 'beta'
 
 
 application {
-    mainClassName = 'app.App'
+    mainClass = 'app.App'
 }
 
 apollo {
-    service("design-evaluator"){
+    service("genetic-algorithm"){
         introspection {
             endpointUrl = "http://graphql:8080/v1/graphql"
         }
