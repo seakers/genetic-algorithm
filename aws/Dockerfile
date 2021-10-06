@@ -35,7 +35,7 @@ FROM amazoncorretto:11
 COPY --from=BUILD_TOOL /app/build/install/genetic-algorithm /app/genetic-algorithm
 
 # Debug stuff
-RUN yum install -y ps htop top free
+RUN yum install -y procps htop top free
 
 # -- Set default directory for running --
 WORKDIR /app/genetic-algorithm
