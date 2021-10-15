@@ -1,10 +1,6 @@
 package algorithm.search;
 
 import com.google.gson.*;
-import com.rabbitmq.client.Channel;
-import com.rabbitmq.client.Connection;
-import com.rabbitmq.client.ConnectionFactory;
-import com.rabbitmq.client.GetResponse;
 import com.algorithm.DeleteNonImprovingArchitecturesMutation;
 import com.algorithm.MarkArchitectureAsImprovingHVMutation;
 import com.algorithm.DeleteNonImprovingArchitecturesMutation.Data;
@@ -26,7 +22,6 @@ import software.amazon.awssdk.services.sqs.SqsClient;
 import software.amazon.awssdk.services.sqs.model.MessageAttributeValue;
 import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;

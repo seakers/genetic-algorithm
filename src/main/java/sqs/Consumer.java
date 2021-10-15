@@ -555,6 +555,7 @@ public class Consumer implements Runnable {
         int groupId  = Integer.parseInt(msgContents.get("group_id"));
         int problemId  = Integer.parseInt(msgContents.get("problem_id"));
         int datasetId  = Integer.parseInt(msgContents.get("dataset_id"));
+        String testedFeature = msgContents.getOrDefault("tested_feature", "");
         
         System.out.println("\n-------------------- ALGORITHM REQUEST --------------------");
         System.out.println("---------------> MAX EVALS: " + maxEvals);
@@ -588,6 +589,7 @@ public class Consumer implements Runnable {
                 .setMaxEvals(Integer.parseInt(maxEvals))
                 .setCrossoverProbability(Double.parseDouble(crossoverProbability))
                 .setMutationProbability(Double.parseDouble(mutationProbability))
+                .setTestedFeature(testedFeature)
                 .setPrivateQueue(this.privateQueue)
                 .getProblemData(problemId, datasetId)
                 .build();

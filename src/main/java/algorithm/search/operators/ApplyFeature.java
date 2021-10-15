@@ -79,6 +79,24 @@ public class ApplyFeature implements Variation {
                 String instruments = featureInfo.group(3);
                 this.applySeparateFeature((AssigningArchitecture)child, instruments);
             }
+            else if (featureType == "emptyOrbit") {
+                String orbits = featureInfo.group(2);
+                this.applyEmptyOrbitFeature((AssigningArchitecture)child, orbits);
+            }
+            else if (featureType == "numOrbits") {
+                String numbers = featureInfo.group(4);
+                this.applyNumOrbitsFeature((AssigningArchitecture)child, numbers);
+            }
+            else if (featureType == "inOrbit") {
+                String orbits = featureInfo.group(2);
+                String instruments = featureInfo.group(3);
+                this.applyInOrbitFeature((AssigningArchitecture)child, orbits, instruments);
+            }
+            else if (featureType == "notInOrbit") {
+                String orbits = featureInfo.group(2);
+                String instruments = featureInfo.group(3);
+                this.applyNotInOrbitFeature((AssigningArchitecture)child, orbits, instruments);
+            }
         }
         return new Solution[]{child};
     }
@@ -272,5 +290,137 @@ public class ApplyFeature implements Variation {
             }
         }
     }
+
+    public void applyEmptyOrbitFeature(AssigningArchitecture solution, String orbits) {
+        // emptyOrbit[o;;]: No instruments in orbit o
+        String[] orbitsList = orbits.split(",", 0);
+        Integer orbit = Integer.parseInt(orbitsList[0]);
+        boolean hasFeature = true;
+        for (int i = 0; i < this.numInstruments; i += 1) {
+            int index = 1 + orbit*this.numInstruments + i;
+            if (((BinaryVariable)solution.getVariable(index)).get(0)) {
+                hasFeature = false;
+            }
+        }
+
+        // Then, if solution doesn't have feature, apply it randomly
+        if (!hasFeature) {
+            // Remove instruments until the orbit in question is empty
+            for (int o = 0; o < this.numOrbits; o += 1) {
+                for (int i = 0; i < this.numInstruments; i += 1) {
+                    int index = 1 + orbit*this.numInstruments + i;
+                    ((BinaryVariable)solution.getVariable(index)).set(0, false);
+                }
+            }
+        }
+    }
+
+    public void applyNumOrbitsFeature(AssigningArchitecture solution, String numbers) {
+        // numOrbits[;;n1,n2]: Between n1 and n2 orbits are used
+        String[] numbersList = numbers.split(",", 0);
+        Integer lowerBound = Integer.parseInt(numbersList[0]);
+        Integer upperBound = lowerBound;
+        if (numbersList.length > 1) {
+            upperBound = Integer.parseInt(numbersList[1]);
+        }
+        boolean hasFeature = true;
+        int count = 0;
+        ArrayList<Integer> usedOrbits = new ArrayList<>();
+        ArrayList<Integer> unusedOrbits = new ArrayList<>();
+        for (int o = 0; o < this.numOrbits; o += 1) {
+            boolean usedOrbit = false;
+            for (int i = 0; i < this.numInstruments; i += 1) {
+                int index = 1 + o*this.numInstruments + i;
+                if (((BinaryVariable)solution.getVariable(index)).get(0)) {
+                    usedOrbit = true;
+                }
+            }
+            if (usedOrbit) {
+                count += 1;
+                usedOrbits.add(o);
+            }
+            else {
+                unusedOrbits.add(o);
+            }
+        }
+        hasFeature = count >= lowerBound && count <= upperBound;
+
+        // Then, if solution doesn't have feature, apply it randomly
+        if (!hasFeature) {
+            Collections.shuffle(usedOrbits);
+            Collections.shuffle(unusedOrbits);
+            while (count > upperBound || count < lowerBound) {
+                if (count > upperBound) {
+                    // Remove instruments until we have enough empty orbits
+                    int orbit = usedOrbits.remove(0);
+                    for (int i = 0; i < this.numInstruments; i += 1) {
+                        int index = 1 + orbit*this.numInstruments + i;
+                        ((BinaryVariable)solution.getVariable(index)).set(0, false);
+                    }
+
+                    count -= 1;
+                }
+                else if (count < lowerBound) {
+                    // Add instruments until we have enough full orbits
+                    int orbit = unusedOrbits.remove(0);
+                    int randomInstrument = PRNG.nextInt(0, this.numInstruments);
+                    int index = 1 + orbit*this.numInstruments + randomInstrument;
+                    ((BinaryVariable)solution.getVariable(index)).set(0, true);
+                    count += 1;
+                }
+            }
+        }
+    }
     
+    public void applyInOrbitFeature(AssigningArchitecture solution, String orbits, String instruments) {
+        // inOrbit[o;i,j,k;]: Instruments i,j,k in orbit o
+        Integer orbit = Integer.parseInt(orbits);
+        String[] instrumentsList = instruments.split(",", 0);
+        ArrayList<Integer> instrArrList = new ArrayList<>();
+        for (String s: instrumentsList) {
+            instrArrList.add(Integer.parseInt(s));
+        }
+        boolean hasFeature = true;
+        for (Integer i: instrArrList) {
+            int index = 1 + orbit*this.numInstruments + i;
+            if (!((BinaryVariable)solution.getVariable(index)).get(0)) {
+                hasFeature = false;
+            }
+        }
+
+        // Then, if solution doesn't have feature, apply it randomly
+        if (!hasFeature) {
+            // Add instruments to orbit o to ensure feature is there
+            for (Integer i: instrArrList) {
+                int index = 1 + orbit*this.numInstruments + i;
+                ((BinaryVariable)solution.getVariable(index)).set(0, true);
+            }
+        }
+    }
+
+    public void applyNotInOrbitFeature(AssigningArchitecture solution, String orbits, String instruments) {
+        // inOrbit[o;i,j,k;]: Instruments i,j,k in orbit o
+        Integer orbit = Integer.parseInt(orbits);
+        String[] instrumentsList = instruments.split(",", 0);
+        ArrayList<Integer> instrArrList = new ArrayList<>();
+        for (String s: instrumentsList) {
+            instrArrList.add(Integer.parseInt(s));
+        }
+        boolean hasFeature = true;
+        for (Integer i: instrArrList) {
+            int index = 1 + orbit*this.numInstruments + i;
+            if (((BinaryVariable)solution.getVariable(index)).get(0)) {
+                hasFeature = false;
+            }
+        }
+
+        // Then, if solution doesn't have feature, apply it randomly
+        if (!hasFeature) {
+            // Add instruments to orbit o to ensure feature is there
+            for (Integer i: instrArrList) {
+                int index = 1 + orbit*this.numInstruments + i;
+                ((BinaryVariable)solution.getVariable(index)).set(0, false);
+            }
+        }
+    }
 }

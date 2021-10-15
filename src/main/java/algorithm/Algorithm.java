@@ -1,6 +1,8 @@
 package algorithm;
 
 import algorithm.search.BinaryInputInteractiveSearch;
+import algorithm.search.operators.ApplyFeature;
+import algorithm.search.operators.EitherVariation;
 import algorithm.search.problems.Assigning.AssigningArchitecture;
 import algorithm.search.problems.Assigning.AssigningProblem;
 import com.algorithm.InstrumentCountQuery;
@@ -312,9 +314,10 @@ public class Algorithm implements Runnable {
         Variation bitFlip          = new BitFlip(mutationProbability);
         Variation integerMutation = new IntegerUM(mutationProbability);
         CompoundVariation var;
-        if (this.testedFeature != null) {
-            
-            var = new CompoundVariation(singlecross, bitFlip, integerMutation);
+        if (this.testedFeature != "") {
+            ApplyFeature applyFeature = new ApplyFeature(this.testedFeature, this.numInstruments, this.numOrbits);
+            EitherVariation eitherVar = new EitherVariation(singlecross, applyFeature, 0.3, 0.7);
+            var = new CompoundVariation(eitherVar, bitFlip, integerMutation);
         }
         else {
             var = new CompoundVariation(singlecross, bitFlip, integerMutation);
