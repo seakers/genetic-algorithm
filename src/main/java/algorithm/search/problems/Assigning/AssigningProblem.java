@@ -5,6 +5,7 @@
  */
 package algorithm.search.problems.Assigning;
 
+import com.algorithm.ArchitectureQuery;
 import com.algorithm.ArchitectureSubscriptionQuery;
 import com.algorithm.SingleArchitectureQuery;
 import com.apollographql.apollo.ApolloCall;
@@ -66,7 +67,7 @@ public class AssigningProblem extends AbstractProblem implements SystemArchitect
      */
     public AssigningProblem(SqsClient sqs, ApolloClient apollo, int[] alternativesForNumberOfSatellites, int numOrbits, int numInstruments, String queueUrl, int problemId, int datasetId) {
         //2 decisions for Choosing and Assigning Patterns
-        super(1 + numInstruments * numOrbits, 2);
+        super(1 + numInstruments * numOrbits, 7);
         this.numInstruments = numInstruments;
         this.numOrbits = numOrbits;
         this.sqs = sqs;
@@ -88,7 +89,7 @@ public class AssigningProblem extends AbstractProblem implements SystemArchitect
             System.out.println("---> Architecture already evaluated!!!");
         }
 
-        System.out.println(String.format("Arch %s Science = %10f; Cost = %10f", arch.toString(), arch.getObjective(0), arch.getObjective(1)));
+        System.out.println(String.format("Arch %s Science = %10f; Cost = %10f %10f %10f %10f %10f %10f ", arch.toString(), arch.getObjective(0), arch.getObjective(1), arch.getObjective(2), arch.getObjective(3), arch.getObjective(4), arch.getObjective(5), arch.getObjective(6)));
     }
 
     public String toNumeralString(final Boolean input) {
@@ -166,10 +167,24 @@ public class AssigningProblem extends AbstractProblem implements SystemArchitect
 
         double science = Double.parseDouble(result.science().toString());
         double cost    = Double.parseDouble(result.cost().toString());
+        double        data_continuity   = Double.parseDouble(result.data_continuity().toString());
+        double        programmatic_risk = Double.parseDouble(result.programmatic_risk().toString());
+        double        fairness          = Double.parseDouble(result.fairness().toString());
+
+        HashMap<String, Double> panel_map = new HashMap<>();
+        for(SingleArchitectureQuery.ArchitectureScoreExplanation explanation: result.ArchitectureScoreExplanations()){
+            String panel_name = explanation.Stakeholder_Needs_Panel().name();
+            panel_map.put(panel_name, Double.parseDouble(explanation.satisfaction().toString()));
+        }
 
         // Add results to arch!!!
-        arch.setObjective(0, -science);
-        arch.setObjective(1, cost);
+        arch.setObjective(0, cost);
+        arch.setObjective(1, data_continuity);
+        arch.setObjective(2, programmatic_risk);
+        arch.setObjective(3, fairness);
+        arch.setObjective(4, -panel_map.get("Oceanic"));
+        arch.setObjective(5, -panel_map.get("Atmosphere"));
+        arch.setObjective(6, -panel_map.get("Terrestrial"));
         arch.setAlreadyEvaluated(true);
         arch.setDatabaseId(result.id());
     }
@@ -202,7 +217,7 @@ public class AssigningProblem extends AbstractProblem implements SystemArchitect
 
     @Override
     public Solution newSolution() {
-        return new AssigningArchitecture(alternativesForNumberOfSatellites, this.numInstruments, this.numOrbits, 2);
+        return new AssigningArchitecture(alternativesForNumberOfSatellites, this.numInstruments, this.numOrbits, 7);
     }
 
 }

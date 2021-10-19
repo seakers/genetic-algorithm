@@ -57,7 +57,7 @@ version 'beta'
 
 
 application {
-    mainClass = 'app.App'
+    mainClassName = 'app.App'
 }
 
 apollo {

@@ -39,7 +39,19 @@ query ArchitectureSubscription($problem_id: Int!, $dataset_id: Int!, $input: Str
 
 query SingleArchitecture($problem_id: Int!, $dataset_id: Int!, $input: String!) {
     items: Architecture (where: {problem_id: {_eq: $problem_id}, dataset_id: {_eq: $dataset_id}, input: {_eq: $input}})  {
-        id input science cost
+        id
+        input
+        science
+        cost
+        fairness
+        data_continuity
+        programmatic_risk
+        ArchitectureScoreExplanations {
+            Stakeholder_Needs_Panel {
+                name
+            }
+            satisfaction
+        }
     }
 }
 
@@ -50,6 +62,15 @@ query Architecture($problem_id: Int!, $dataset_id: Int!) {
         input
         science
         cost
+        fairness
+        data_continuity
+        programmatic_risk
+        ArchitectureScoreExplanations {
+            Stakeholder_Needs_Panel {
+                name
+            }
+            satisfaction
+        }
     }
 }
 

@@ -173,30 +173,6 @@ public class Algorithm implements Runnable {
             this.initialPopSize    = items.size();
             this.numOrbits         = this.getNumOrbits(problemId);
             this.numInstruments    = this.getNumInstr(problemId);
-//            this.solutions      = new ArrayList<>(this.initialPopSize);
-//
-//            for(ArchitectureQuery.Item item: items){
-//
-//                String        string_inputs = item.input();
-//                double        science       = Double.parseDouble(item.science().toString());
-//                double        cost          = Double.parseDouble(item.cost().toString());
-//                List<Boolean> inputs        = this.stringToBool(string_inputs);
-//
-//                AssigningArchitecture new_arch = new AssigningArchitecture(new int[]{1}, this.getNumInstr(problem_id), this.getNumOrbits(problem_id), 2);
-//
-//                for (int j = 1; j < new_arch.getNumberOfVariables(); ++j) {
-//                    BinaryVariable var = new BinaryVariable(1);
-//                    var.set(0, inputs.get(j-1));
-//                    new_arch.setVariable(j, var);
-//                }
-//                new_arch.setObjective(0, -science);
-//                new_arch.setObjective(1, cost);
-//                new_arch.setAlreadyEvaluated(true);
-//
-//                System.out.println("---> SOLUTION: " + string_inputs + " " + science + " " + cost);
-//
-//                this.solutions.add(new_arch);
-//            }
             return this;
         }
 
@@ -227,25 +203,6 @@ public class Algorithm implements Runnable {
             build.properties.setDouble("mutationProbability", this.mutationProbability);
 
             build.assignmentProblem = new AssigningProblem(this.sqs, apollo, new int[]{1}, this.numOrbits, this.numInstruments, this.vassarQueueUrl, problemId, datasetId);
-
-
-//            InjectedInitialization initialization = new InjectedInitialization(assignmentProblem, this.solutions.size(), this.solutions);
-//
-//            double[]                   epsilonDouble = new double[]{0.001, 1};
-//            Population                 population    = new Population();
-//            EpsilonBoxDominanceArchive archive       = new EpsilonBoxDominanceArchive(epsilonDouble);
-//            ChainedComparator          comp          = new ChainedComparator(new ParetoObjectiveComparator());
-//            TournamentSelection        selection     = new TournamentSelection(2, comp);
-//
-//            Variation singlecross      = new OnePointCrossover(crossoverProbability);
-//            Variation bitFlip          = new BitFlip(mutationProbability);
-//            Variation intergerMutation = new IntegerUM(mutationProbability);
-//            CompoundVariation var      = new CompoundVariation(singlecross, bitFlip, intergerMutation);
-//
-//            build.eMOEA = new EpsilonMOEA(assignmentProblem, population, archive, selection, var, initialization);
-//
-//
-//            System.out.println("----> eMOEA BUILT");
             return build;
         }
 
@@ -273,20 +230,37 @@ public class Algorithm implements Runnable {
 
         for(ArchitectureQuery.Item item: this.initialPopulation){
 
-            String        stringInputs  = item.input();
-            double        science       = Double.parseDouble(item.science().toString());
-            double        cost          = Double.parseDouble(item.cost().toString());
-            List<Boolean> inputs        = this.stringToBool(stringInputs);
+            String        stringInputs      = item.input();
+            double        science           = Double.parseDouble(item.science().toString());
+            double        cost              = Double.parseDouble(item.cost().toString());
+            double        data_continuity   = Double.parseDouble(item.data_continuity().toString());
+            double        programmatic_risk = Double.parseDouble(item.programmatic_risk().toString());
+            double        fairness          = Double.parseDouble(item.fairness().toString());
 
-            AssigningArchitecture newArch = new AssigningArchitecture(new int[]{1}, this.numInstruments, this.numOrbits, 2);
+            HashMap<String, Double> panel_map = new HashMap<>();
+            for(ArchitectureQuery.ArchitectureScoreExplanation explanation: item.ArchitectureScoreExplanations()){
+                String panel_name = explanation.Stakeholder_Needs_Panel().name();
+                panel_map.put(panel_name, Double.parseDouble(explanation.satisfaction().toString()));
+            }
+
+
+
+            List<Boolean> inputs            = this.stringToBool(stringInputs);
+
+            AssigningArchitecture newArch = new AssigningArchitecture(new int[]{1}, this.numInstruments, this.numOrbits, 7);
 
             for (int j = 1; j < newArch.getNumberOfVariables(); ++j) {
                 BinaryVariable var = new BinaryVariable(1);
                 var.set(0, inputs.get(j-1));
                 newArch.setVariable(j, var);
             }
-            newArch.setObjective(0, -science);
-            newArch.setObjective(1, cost);
+            newArch.setObjective(0, cost);
+            newArch.setObjective(1, data_continuity);
+            newArch.setObjective(2, programmatic_risk);
+            newArch.setObjective(3, fairness);
+            newArch.setObjective(4, -panel_map.get("Oceanic"));
+            newArch.setObjective(5, -panel_map.get("Atmosphere"));
+            newArch.setObjective(6, -panel_map.get("Terrestrial"));
             newArch.setAlreadyEvaluated(true);
             newArch.setDatabaseId(item.id());
 
@@ -304,7 +278,7 @@ public class Algorithm implements Runnable {
         // INITIALIZE
         InjectedInitialization initialization = new InjectedInitialization(assignmentProblem, this.solutions.size(), this.solutions);
 
-        double[]                   epsilonDouble = new double[]{0.001, 1};
+        double[]                   epsilonDouble = new double[]{1, 1, .01, .01, .0001, .0001, .0001};
         Population                 population    = new Population();
         EpsilonBoxDominanceArchive archive       = new EpsilonBoxDominanceArchive(epsilonDouble);
         ChainedComparator          comp          = new ChainedComparator(new ParetoObjectiveComparator());

@@ -27,6 +27,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.TimeUnit;
 
 public abstract class AbstractInteractiveSearch implements Callable<org.moeaframework.core.Algorithm> {
     private final Algorithm alg;
@@ -65,19 +66,28 @@ public abstract class AbstractInteractiveSearch implements Callable<org.moeafram
 
         while (!alg.isTerminated() && (alg.getNumberOfEvaluations() < maxEvaluations) && !isStopped) {
             // External conditions for stopping
-            if (!this.privateQueue.isEmpty()) {
-                ArrayList<String> returnMessages = new ArrayList<>();
-                while (!this.privateQueue.isEmpty()) {
-                    String msgContents = this.privateQueue.poll();
-                    if (msgContents.equals("stop")) {
-                        this.isStopped = true;
+            int counter = 0;
+            while(counter < 20){
+                try                            { TimeUnit.MILLISECONDS.sleep(100); }
+                catch (InterruptedException e) { e.printStackTrace(); }
+                if (!this.privateQueue.isEmpty()) {
+                    ArrayList<String> returnMessages = new ArrayList<>();
+                    while (!this.privateQueue.isEmpty()) {
+                        String msgContents = this.privateQueue.poll();
+                        if (msgContents.equals("stop")) {
+                            this.isStopped = true;
+                        }
+                        if (msgContents.equals("ping")) {
+                            lastPingTime = System.currentTimeMillis();
+                        }
                     }
-                    if (msgContents.equals("ping")) {
-                        lastPingTime = System.currentTimeMillis();
-                    }
+                    this.privateQueue.addAll(returnMessages);
+                    break;
                 }
-                this.privateQueue.addAll(returnMessages);
+                counter++;
             }
+
+
 
             long currentTime = System.currentTimeMillis();
             if (currentTime - lastPingTime > 60*1000) {
