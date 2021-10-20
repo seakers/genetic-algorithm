@@ -24,6 +24,7 @@ import org.moeaframework.core.operator.binary.BitFlip;
 import org.moeaframework.core.variable.BinaryVariable;
 import org.moeaframework.util.TypedProperties;
 
+import java.util.Random;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -225,8 +226,9 @@ public class Algorithm implements Runnable {
 
     public void buildInitialSolutions() {
         System.out.println("\n-------------------------------------------------------- INITIAL SOLUTIONS");
+        int min_pop_size = 10;
 
-        this.solutions = new ArrayList<>(this.initialPopSize);
+        this.solutions = new ArrayList<>();
 
         for(ArchitectureQuery.Item item: this.initialPopulation){
 
@@ -268,6 +270,30 @@ public class Algorithm implements Runnable {
 
             this.solutions.add(newArch);
         }
+
+        // --> Create random solutions if under min number of designs
+        int num_random = min_pop_size - this.solutions.size();
+        for(int x = 0; x < num_random; x++){
+            List<Boolean> inputs = this.getRandomDesign(this.numOrbits * this.numInstruments);
+            AssigningArchitecture newArch = new AssigningArchitecture(new int[]{1}, this.numInstruments, this.numOrbits, 7);
+            for (int j = 1; j < newArch.getNumberOfVariables(); ++j) {
+                BinaryVariable var = new BinaryVariable(1);
+                var.set(0, inputs.get(j-1));
+                newArch.setVariable(j, var);
+            }
+            newArch.setAlreadyEvaluated(false);
+            this.solutions.add(newArch);
+        }
+    }
+
+    public List<Boolean> getRandomDesign(int num_bits){
+        ArrayList<Boolean> design = new ArrayList<>();
+        Random rand = new Random();
+        for(int x = 0; x < num_bits; x++){
+            boolean val = rand.nextFloat() < 0.05;
+            design.add(val);
+        }
+        return design;
     }
 
     public void initialize() {
