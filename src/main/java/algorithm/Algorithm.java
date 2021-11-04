@@ -315,6 +315,7 @@ public class Algorithm implements Runnable {
         Variation integerMutation = new IntegerUM(mutationProbability);
         CompoundVariation var;
         if (this.testedFeature != "") {
+            System.out.println("----> Adding hypothesis testing to GA!");
             ApplyFeature applyFeature = new ApplyFeature(this.testedFeature, this.numInstruments, this.numOrbits);
             EitherVariation eitherVar = new EitherVariation(singlecross, applyFeature, 0.3, 0.7);
             var = new CompoundVariation(eitherVar, bitFlip, integerMutation);

@@ -54,45 +54,46 @@ public class ApplyFeature implements Variation {
         Solution child = parents[0].copy();
         if (child instanceof AssigningArchitecture) {
             // First, preprocess feature to get all the information {baseFeature[orbits;instruments;numbers]}
-            Pattern featurePattern = Pattern.compile("{(\\w+)\\[(\\d+(?:,\\d+)*)?;(\\d+(?:,\\d+)*)?;(\\d+(?:,\\d+)*)?\\]}");
+            Pattern featurePattern = Pattern.compile("\\{(\\w+)\\[(\\d+(?:,\\d+)*)?;(\\d+(?:,\\d+)*)?;(\\d+(?:,\\d+)*)?\\]\\}");
             Matcher featureInfo = featurePattern.matcher(this.feature);
+            boolean b = featureInfo.matches();
             String featureType = featureInfo.group(1);
             // Variables start at 1 because AssigningArchitecture has a combinatorial variable first
-            if (featureType == "present") {
+            if (featureType.equals("present")) {
                 String[] instruments = featureInfo.group(3).split(",", 0);
                 this.applyPresentFeature((AssigningArchitecture)child, instruments);
             }
-            else if (featureType == "absent") {
+            else if (featureType.equals("absent")) {
                 String[] instruments = featureInfo.group(3).split(",", 0);
                 this.applyAbsentFeature((AssigningArchitecture)child, instruments);
             }
-            else if (featureType == "numOfInstruments") {
+            else if (featureType.equals("numOfInstruments")) {
                 String instruments = featureInfo.group(3);
                 Integer number = Integer.parseInt(featureInfo.group(4));
                 this.applyNumInstrumentsFeature((AssigningArchitecture)child, instruments, number);
             }
-            else if (featureType == "together") {
+            else if (featureType.equals("together")) {
                 String instruments = featureInfo.group(3);
                 this.applyTogetherFeature((AssigningArchitecture)child, instruments);
             }
-            else if (featureType == "separate") {
+            else if (featureType.equals("separate")) {
                 String instruments = featureInfo.group(3);
                 this.applySeparateFeature((AssigningArchitecture)child, instruments);
             }
-            else if (featureType == "emptyOrbit") {
+            else if (featureType.equals("emptyOrbit")) {
                 String orbits = featureInfo.group(2);
                 this.applyEmptyOrbitFeature((AssigningArchitecture)child, orbits);
             }
-            else if (featureType == "numOrbits") {
+            else if (featureType.equals("numOrbits")) {
                 String numbers = featureInfo.group(4);
                 this.applyNumOrbitsFeature((AssigningArchitecture)child, numbers);
             }
-            else if (featureType == "inOrbit") {
+            else if (featureType.equals("inOrbit")) {
                 String orbits = featureInfo.group(2);
                 String instruments = featureInfo.group(3);
                 this.applyInOrbitFeature((AssigningArchitecture)child, orbits, instruments);
             }
-            else if (featureType == "notInOrbit") {
+            else if (featureType.equals("notInOrbit")) {
                 String orbits = featureInfo.group(2);
                 String instruments = featureInfo.group(3);
                 this.applyNotInOrbitFeature((AssigningArchitecture)child, orbits, instruments);
@@ -112,7 +113,7 @@ public class ApplyFeature implements Variation {
         }
         // Then, if solution doesn't have feature, apply it randomly
         if (!hasFeature) {
-            int randomOrbit = PRNG.nextInt(0, this.numOrbits);
+            int randomOrbit = PRNG.nextInt(0, this.numOrbits-1);
             ((BinaryVariable)solution.getVariable(randomOrbit*this.numInstruments + instrument + 1)).set(0, true);
         }
     }
@@ -128,7 +129,7 @@ public class ApplyFeature implements Variation {
         }
         // Then, if solution doesn't have feature, apply it randomly
         if (!hasFeature) {
-            int randomOrbit = PRNG.nextInt(0, this.numOrbits);
+            int randomOrbit = PRNG.nextInt(0, this.numOrbits-1);
             ((BinaryVariable)solution.getVariable(randomOrbit*this.numInstruments + instrument + 1)).set(0, false);
         }
     }
@@ -159,7 +160,7 @@ public class ApplyFeature implements Variation {
                     }
                     else {
                         // Add instruments until we have the right number
-                        int randomInstrument = PRNG.nextInt(0, this.numOrbits*this.numInstruments);
+                        int randomInstrument = PRNG.nextInt(0, this.numOrbits*this.numInstruments-1);
                         BinaryVariable var = (BinaryVariable)solution.getVariable(randomInstrument + 1);
                         if (!var.get(0)) {
                             var.set(0, true);
@@ -204,8 +205,8 @@ public class ApplyFeature implements Variation {
                     }
                     else {
                         // Add instruments until we have the right number
-                        int randomOrbit = PRNG.nextInt(0, this.numOrbits);
-                        int randomInstrument = instrArrList.get(PRNG.nextInt(0, instrArrList.size()));
+                        int randomOrbit = PRNG.nextInt(0, this.numOrbits-1);
+                        int randomInstrument = instrArrList.get(PRNG.nextInt(0, instrArrList.size()-1));
                         BinaryVariable var = (BinaryVariable)solution.getVariable(randomOrbit*this.numInstruments + randomInstrument + 1);
                         if (!var.get(0)) {
                             var.set(0, true);
@@ -242,7 +243,7 @@ public class ApplyFeature implements Variation {
         // Then, if solution doesn't have feature, apply it randomly
         if (!hasFeature) {
             // Add instruments until we have an orbit with all the instruments together
-            int randomOrbit = PRNG.nextInt(0, this.numOrbits);
+            int randomOrbit = PRNG.nextInt(0, this.numOrbits-1);
             int startIndex = 1 + randomOrbit*this.numInstruments;
             for (Integer instr: instrArrList) {
                 ((BinaryVariable)solution.getVariable(startIndex + instr)).set(0, true);
@@ -363,7 +364,7 @@ public class ApplyFeature implements Variation {
                 else if (count < lowerBound) {
                     // Add instruments until we have enough full orbits
                     int orbit = unusedOrbits.remove(0);
-                    int randomInstrument = PRNG.nextInt(0, this.numInstruments);
+                    int randomInstrument = PRNG.nextInt(0, this.numInstruments-1);
                     int index = 1 + orbit*this.numInstruments + randomInstrument;
                     ((BinaryVariable)solution.getVariable(index)).set(0, true);
                     count += 1;
