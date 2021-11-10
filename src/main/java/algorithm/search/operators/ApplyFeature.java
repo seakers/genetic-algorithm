@@ -56,7 +56,7 @@ public class ApplyFeature implements Variation {
             // First, preprocess feature to get all the information {baseFeature[orbits;instruments;numbers]}
             Pattern featurePattern = Pattern.compile("\\{(\\w+)\\[(\\d+(?:,\\d+)*)?;(\\d+(?:,\\d+)*)?;(\\d+(?:,\\d+)*)?\\]\\}");
             Matcher featureInfo = featurePattern.matcher(this.feature);
-            boolean b = featureInfo.matches();
+            featureInfo.matches();
             String featureType = featureInfo.group(1);
             // Variables start at 1 because AssigningArchitecture has a combinatorial variable first
             if (featureType.equals("present")) {
