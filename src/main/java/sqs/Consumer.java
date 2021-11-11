@@ -184,14 +184,14 @@ public class Consumer implements Runnable {
             // CHECK CONNECTION QUEUE
             List<Message> messages = new ArrayList<>();
             List<Message> connectionMessages = new ArrayList<>();
-            connectionMessages = this.getMessages(this.requestQueueUrl, 3, 5);
+            connectionMessages = this.getMessages(this.requestQueueUrl, 1, 1);
             connectionMessages = this.handleMessages(this.requestQueueUrl, connectionMessages);
             messages.addAll(connectionMessages);
             
             // CHECK USER QUEUE
             List<Message> userMessages = new ArrayList<>();
             if (this.userRequestQueueUrl != null) {
-                userMessages = this.getMessages(this.userRequestQueueUrl, 3, 5);
+                userMessages = this.getMessages(this.userRequestQueueUrl, 5, 1);
                 userMessages = this.handleMessages(this.userRequestQueueUrl, userMessages);
                 messages.addAll(userMessages);
             }

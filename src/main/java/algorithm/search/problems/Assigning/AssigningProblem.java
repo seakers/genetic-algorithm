@@ -152,7 +152,7 @@ public class AssigningProblem extends AbstractProblem implements SystemArchitect
             try{
                 while(!this.runningStatusCheck(input)){
                     System.out.println("---> processing...");
-                    TimeUnit.SECONDS.sleep(2);
+                    TimeUnit.SECONDS.sleep(1);
                 }
             }
             catch(Exception e){
