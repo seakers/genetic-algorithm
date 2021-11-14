@@ -98,6 +98,11 @@ public abstract class AbstractInteractiveSearch implements Callable<org.moeafram
             System.out.println("\n\n---> Get new population");
             Population newArchive = ((AbstractEvolutionaryAlgorithm)alg).getArchive();
 
+            // If error happened during evaluation
+            if (((AssigningArchitecture)pop.get(pop.size()-1)).getDatabaseId() == -1) {
+                break;
+            }
+
             // GABE: this loop process the new architecture from the GA through rabbitmq
             System.out.println("\n\n---> Compare new to old population");
             for (int i = 0; i < newArchive.size(); ++i) {

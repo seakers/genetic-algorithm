@@ -595,6 +595,14 @@ public class Consumer implements Runnable {
                 .build();
 
         // RUN CONSUMER
+        if (this.algorithm != null && this.algorithm.isAlive()) {
+            try {
+                this.algorithm.join();
+            }
+            catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
         this.algorithm = new Thread(process);
         this.algorithm.start();
     }
