@@ -606,6 +606,7 @@ public class Consumer implements Runnable {
                 e.printStackTrace();
             }
         }
+        this.privateQueue.clear();
         this.algorithm = new Thread(process);
         this.algorithm.start();
     }

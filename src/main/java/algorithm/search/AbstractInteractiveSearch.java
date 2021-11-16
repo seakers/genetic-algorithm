@@ -147,6 +147,7 @@ public abstract class AbstractInteractiveSearch implements Callable<org.moeafram
             // Change the archive reference to the new one
             archive = new Population(newArchive);
         }
+        System.out.println("--> Cause of ending: isStopped - " + this.isStopped + "; isTerminated - " + alg.isTerminated() + "; numOfEvaluations - " + alg.getNumberOfEvaluations());
 
         alg.terminate();
         long finishTime = System.currentTimeMillis();
