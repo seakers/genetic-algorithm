@@ -27,6 +27,7 @@ import software.amazon.awssdk.services.sqs.model.GetQueueUrlResponse;
 import software.amazon.awssdk.services.sqs.model.ListQueuesResponse;
 import software.amazon.awssdk.services.sqs.model.Message;
 import software.amazon.awssdk.services.sqs.model.MessageAttributeValue;
+import software.amazon.awssdk.services.sqs.model.MessageSystemAttributeName;
 import software.amazon.awssdk.services.sqs.model.QueueAttributeName;
 import software.amazon.awssdk.services.sqs.model.ReceiveMessageRequest;
 import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
@@ -38,6 +39,8 @@ import java.net.URI;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -628,7 +631,24 @@ public class Consumer implements Runnable {
                 .attributeNames(QueueAttributeName.ALL)
                 .messageAttributeNames("All")
                 .build();
-        return this.sqsClient.receiveMessage(receiveMessageRequest).messages();
+
+        List<Message> messages = new ArrayList<>(this.sqsClient.receiveMessage(receiveMessageRequest).messages());
+
+        Collections.sort(messages, (Message a, Message b) -> {
+            Long timestamp_a = Long.parseLong(a.attributes().get(MessageSystemAttributeName.SENT_TIMESTAMP));
+            Long timestamp_b = Long.parseLong(b.attributes().get(MessageSystemAttributeName.SENT_TIMESTAMP));
+            Long diff = timestamp_a - timestamp_b;
+            if (diff > 0) {
+                return 1;
+            }
+            else if (diff < 0) {
+                return -1;
+            }
+            else {
+                return 0;
+            }
+        });
+        return messages;
     }
 
     // 2.
