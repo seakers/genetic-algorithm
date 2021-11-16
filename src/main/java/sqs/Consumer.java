@@ -553,7 +553,8 @@ public class Consumer implements Runnable {
     private void msgTypeStartGa(Map<String, String> msgContents) {  
         String maxEvals  = msgContents.get("maxEvals");
         String crossoverProbability  = msgContents.get("crossoverProbability");
-        String mutationProbability  = msgContents.get("mutationProbability");
+        String mutationProbability   = msgContents.get("mutationProbability");
+        String algorithmUrl          = msgContents.get("algorithmUrl");
         int groupId  = Integer.parseInt(msgContents.get("group_id"));
         int problemId  = Integer.parseInt(msgContents.get("problem_id"));
         int datasetId  = Integer.parseInt(msgContents.get("dataset_id"));
@@ -582,7 +583,7 @@ public class Consumer implements Runnable {
         }
         final SqsClient sqsClient = sqsClientBuilder.build();
         
-        Algorithm process = new Algorithm.Builder(this.userResponseQueueUrl, this.vassarRequestQueueUrl)
+        Algorithm process = new Algorithm.Builder(algorithmUrl, this.vassarRequestQueueUrl)
                 .setSqsClient(sqsClient)
                 .setGroupId(groupId)
                 .setProblemId(problemId)
