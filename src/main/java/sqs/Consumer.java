@@ -40,7 +40,6 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -600,6 +599,7 @@ public class Consumer implements Runnable {
         // RUN CONSUMER
         if (this.algorithm != null && this.algorithm.isAlive()) {
             try {
+                this.privateQueue.add("stop");
                 this.algorithm.join();
             }
             catch (InterruptedException e) {
