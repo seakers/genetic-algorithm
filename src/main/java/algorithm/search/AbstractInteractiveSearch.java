@@ -70,6 +70,7 @@ public abstract class AbstractInteractiveSearch implements Callable<org.moeafram
                 while (!this.privateQueue.isEmpty()) {
                     String msgContents = this.privateQueue.poll();
                     if (msgContents.equals("stop")) {
+                        System.out.println("--- Stopping due to external message.");
                         this.isStopped = true;
                     }
                     if (msgContents.equals("ping")) {
@@ -80,7 +81,8 @@ public abstract class AbstractInteractiveSearch implements Callable<org.moeafram
             }
 
             long currentTime = System.currentTimeMillis();
-            if (currentTime - lastPingTime > 60*1000) {
+            if (currentTime - lastPingTime > 90*1000) {
+                System.out.println("--- Stopping due to expired pings.");
                 this.isStopped = true;
             }
 
