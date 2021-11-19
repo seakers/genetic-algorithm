@@ -75,6 +75,8 @@ public abstract class AbstractInteractiveSearch implements Callable<org.moeafram
                     }
                     if (msgContents.equals("ping")) {
                         lastPingTime = System.currentTimeMillis();
+                        // Send ping to thread
+                        this.sendPingBack();
                     }
                 }
                 this.privateQueue.addAll(returnMessages);
@@ -177,4 +179,21 @@ public abstract class AbstractInteractiveSearch implements Callable<org.moeafram
     }
 
     public abstract JsonElement getJSONArchitecture(Solution architecture);
+
+    public void sendPingBack() {
+        // Notify brain of new GA Architecture for proactive purposes (no need to send arch due to GraphQL)
+        final Map<String, MessageAttributeValue> messageAttributes = new HashMap<>();
+        messageAttributes.put("msgType",
+                MessageAttributeValue.builder()
+                        .dataType("String")
+                        .stringValue("ping")
+                        .build()
+        );
+        this.sqsClient.sendMessage(SendMessageRequest.builder()
+                .queueUrl(this.userQueueUrl)
+                .messageBody("ga_message")
+                .messageAttributes(messageAttributes)
+                .delaySeconds(0)
+                .build());
+    }
 }
