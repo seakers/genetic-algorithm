@@ -1,7 +1,19 @@
 package sqs;
 
 import algorithm.Algorithm;
+import com.algorithm.ArchitectureQuery;
+import com.algorithm.InstrumentQuery;
+import com.algorithm.OrbitCountQuery;
+import com.algorithm.ProblemOrbitJoinQuery;
+import com.apollographql.apollo.ApolloCall;
 import com.apollographql.apollo.ApolloClient;
+import com.apollographql.apollo.api.Response;
+import com.apollographql.apollo.rx2.Rx2Apollo;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import io.reactivex.Observable;
 import okhttp3.OkHttpClient;
 
 import org.json.simple.JSONObject;
@@ -33,24 +45,31 @@ import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
 import software.amazon.awssdk.services.sqs.model.SetQueueAttributesRequest;
 import software.amazon.awssdk.regions.Region;
 
+import java.io.FileWriter;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Scanner;
-import java.util.UUID;
+import java.text.SimpleDateFormat;
+import java.util.*;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 
 public class Consumer implements Runnable {
     
     private enum State {
-        WAITING_FOR_USER, WAITING_FOR_ACK, READY
+        READY, RUNNING
     }
+
+
+    private String    privateRequestQueue;
+    private String    privateResponseQueue;
+    private ConcurrentLinkedQueue<Map<String, String>> pingConsumerQueue;
+    private ConcurrentLinkedQueue<Map<String, String>> pingConsumerQueueResponse;
+    private PingConsumer pingConsumer;
+
+
+
+
     
     private SqsClient sqsClient;
     private EcsClient ecsClient;
@@ -68,11 +87,14 @@ public class Consumer implements Runnable {
     private Thread    algorithm;
     private Region    region;
     private String    awsStackEndpoint;
-    private State     currentState = State.WAITING_FOR_USER;
+    private State     currentState = State.READY;
     private String    uuid = UUID.randomUUID().toString();
     private long      lastPingTime = System.currentTimeMillis();
     private long      lastDownsizeRequestTime = System.currentTimeMillis();
     private int       userId;
+    private int       datasetId;
+    private int       problemId;
+
     private ConcurrentLinkedQueue<String> privateQueue;
     
     public static class Builder{
@@ -154,6 +176,13 @@ public class Consumer implements Runnable {
             build.awsStackEndpoint     = this.awsStackEndpoint;
             build.running              = true;
             build.privateQueue = new ConcurrentLinkedQueue<String>();
+            build.datasetId    = 0;
+            build.problemId    = 0;
+            build.privateRequestQueue = System.getenv("GA_REQUEST_URL");
+            build.privateResponseQueue = System.getenv("GA_RESPONSE_URL");
+            build.pingConsumerQueue = new ConcurrentLinkedQueue<>();
+            build.pingConsumerQueueResponse = new ConcurrentLinkedQueue<>();
+            build.pingConsumer = new PingConsumer(build.pingConsumerQueue, build.pingConsumerQueueResponse);
             
             return build;
         }
@@ -171,30 +200,22 @@ public class Consumer implements Runnable {
         
         // Ensure queues exist
         this.createConnectionQueues();
-        
+
+        // Start ping and status queues
+        this.pingConsumer.run();
+
         while (this.running) {
             System.out.println("---> Sleep Iteration: " + counter);
             System.out.println("Current State: " + this.currentState);
             
             List<Map<String, String>> messagesContents = new ArrayList<>();
             
-            // Check if timers are expired for different states
-            this.checkTimers();
-            
             // CHECK CONNECTION QUEUE
             List<Message> messages = new ArrayList<>();
-            List<Message> connectionMessages = new ArrayList<>();
-            connectionMessages = this.getMessages(this.requestQueueUrl, 3, 5);
-            connectionMessages = this.handleMessages(this.requestQueueUrl, connectionMessages);
-            messages.addAll(connectionMessages);
-            
-            // CHECK USER QUEUE
-            List<Message> userMessages = new ArrayList<>();
-            if (this.userRequestQueueUrl != null) {
-                userMessages = this.getMessages(this.userRequestQueueUrl, 3, 5);
-                userMessages = this.handleMessages(this.userRequestQueueUrl, userMessages);
-                messages.addAll(userMessages);
-            }
+            messages = this.getMessages(this.privateRequestQueue, 1, 1);
+
+            // CHECK PING QUEUE
+            this.checkPingQueue();
             
             for (Message msg: messages) {
                 HashMap<String, String> msgContents = this.processMessage(msg, true);
@@ -206,23 +227,11 @@ public class Consumer implements Runnable {
                 
                 if(msgContents.containsKey("msgType")){
                     String msgType = msgContents.get("msgType");
-                    if (msgType.equals("connectionRequest")) {
-                        this.msgTypeConnectionRequest(msgContents);
-                    }
-                    else if (msgType.equals("connectionAck")) {
-                        this.msgTypeConnectionAck(msgContents);
-                    }
-                    else if (msgType.equals("statusCheck")) {
-                        this.msgTypeStatusCheck(msgContents);
-                    }
-                    else if(msgType.equals("start_ga")){
+                    if(msgType.equals("start_ga")){
                         this.msgTypeStartGa(msgContents);
                     }
                     else if(msgType.equals("stop_ga")){
                         this.msgTypeStopGa(msgContents);
-                    }
-                    else if (msgType.equals("ping")) {
-                        this.msgTypePing(msgContents);
                     }
                     else if(msgType.equals("exit")){
                         System.out.println("----> Exiting gracefully");
@@ -231,14 +240,10 @@ public class Consumer implements Runnable {
                 }
                 else{
                     System.out.println("-----> INCOMING MESSAGE DIDN'T HAVE ATTRIBUTE: msgType");
-                    // this.consumerSleep(10);
                 }
             }
-            if (!connectionMessages.isEmpty()) {
-                this.deleteMessages(connectionMessages, this.requestQueueUrl);
-            }
-            if (!userMessages.isEmpty()) {
-                this.deleteMessages(userMessages, this.userRequestQueueUrl);
+            if (!messages.isEmpty()) {
+                this.deleteMessages(messages, this.privateRequestQueue);
             }
             counter++;
         }
@@ -339,222 +344,49 @@ public class Consumer implements Runnable {
         this.deadLetterQueueArn = deadQueueArn;
     }
     
-    private void checkTimers() {
-        switch (this.currentState) {
-            case WAITING_FOR_USER:
-                if (System.currentTimeMillis() - this.lastPingTime > 60*60*1000) {
-                    this.downsizeAwsService();
-                }
-                break;
-            case WAITING_FOR_ACK:
-                if (System.currentTimeMillis() - this.lastPingTime > 1*60*1000) {
-                    this.currentState = State.WAITING_FOR_USER;
-                    this.userRequestQueueUrl = null;
-                    this.userResponseQueueUrl = null;
-                }
-                break;
-            case READY:
-                if (System.currentTimeMillis() - this.lastPingTime > 5*60*1000) {
-                    this.currentState = State.WAITING_FOR_USER;
-                    this.userRequestQueueUrl = null;
-                    this.userResponseQueueUrl = null;
-                }
-                break;
-            default:
-                break;
+    private void checkPingQueue() {
+        if(!this.pingConsumerQueueResponse.isEmpty()){
+            this.running = false;
         }
     }
-    
-    private List<Message> handleMessages(String queueUrl, List<Message> messages) {
-        List<Message> processedMessages = new ArrayList<>();
-        for (Message msg: messages) {
-            HashMap<String, String> msgContents = this.processMessage(msg, false);
-            if (isMessageAllowed(msgContents)) {
-                processedMessages.add(msg);
-            }
-            else {
-                // Reject the message and send back to queue
-                ChangeMessageVisibilityRequest changeMessageVisibilityRequest = ChangeMessageVisibilityRequest.builder()
-                    .queueUrl(queueUrl)
-                    .receiptHandle(msg.receiptHandle())
-                    .visibilityTimeout(1)
-                    .build();
-                this.sqsClient.changeMessageVisibility(changeMessageVisibilityRequest);
-            }
-        }
-        return processedMessages;
+
+
+
+    // --> SEND CURRENT STATUS
+    private void sendRunningStatus(int gorupId, int problemId, int datasetId){
+        Map<String, String> status_message = new HashMap<>();
+        status_message.put("STATUS", "RUNNING");
+        status_message.put("PROBLEM_ID", String.valueOf(problemId));
+        status_message.put("GROUP_ID", String.valueOf(gorupId));
+        status_message.put("DATASET_ID", String.valueOf(datasetId));
+        this.pingConsumerQueue.add(status_message);
     }
-    
-    // Filter valid messages based on the current state of the system
-    private boolean isMessageAllowed(Map<String, String> msgContents) {
-        String msgType = msgContents.get("msgType");
-        List<String> allowedTypes = new ArrayList<>();
-        switch (this.currentState) {
-            case WAITING_FOR_USER:
-                allowedTypes = Arrays.asList("connectionRequest", "statusCheck");
-                break;
-            case WAITING_FOR_ACK:
-                allowedTypes = Arrays.asList("connectionAck", "statusCheck");
-                break;
-            case READY:
-                allowedTypes = Arrays.asList("start_ga", "stop_ga", "ping", "statusCheck", "exit");
-                break;
-        }
-        // Check for both allowedTypes and UUID match
-        boolean isAllowed = false;
-        if (allowedTypes.contains(msgType)) {
-            isAllowed = true;
-            if (msgContents.containsKey("UUID")) {
-                String msgUUID = msgContents.get("UUID");
-                if (!msgUUID.equals(this.uuid)) {
-                    isAllowed = false;
-                }
-            }
-        }
-        return isAllowed;
+
+    private void sendReadyStatus(){
+        Map<String, String> status_message = new HashMap<>();
+        status_message.put("STATUS", "READY");
+        this.pingConsumerQueue.add(status_message);
     }
-    
-    
+
     // ---> MESSAGE TYPES
-    private void msgTypeConnectionRequest(Map<String, String> msgContents) {
-        String userId = msgContents.get("user_id");
-        this.userId = Integer.parseInt(userId);
-        
-        // Create queues for private communication
-        QueueUrls queueUrls = createUserQueues(userId);
-        
-        final Map<String, MessageAttributeValue> messageAttributes = new HashMap<>();
-        messageAttributes.put("msgType",
-                MessageAttributeValue.builder()
-                        .dataType("String")
-                        .stringValue("isAvailable")
-                        .build()
-        );
-        messageAttributes.put("UUID",
-                MessageAttributeValue.builder()
-                        .dataType("String")
-                        .stringValue(this.uuid)
-                        .build()
-        );
-        messageAttributes.put("type",
-                MessageAttributeValue.builder()
-                        .dataType("String")
-                        .stringValue("genetic-algorithm")
-                        .build()
-        );
-        messageAttributes.put("user_id",
-                MessageAttributeValue.builder()
-                        .dataType("String")
-                        .stringValue(userId)
-                        .build()
-        );
-        messageAttributes.put("request_queue_url",
-                MessageAttributeValue.builder()
-                        .dataType("String")
-                        .stringValue(queueUrls.requestUrl)
-                        .build()
-        );
-        messageAttributes.put("response_queue_url",
-                MessageAttributeValue.builder()
-                        .dataType("String")
-                        .stringValue(queueUrls.responseUrl)
-                        .build()
-        );
-
-        this.sqsClient.sendMessage(SendMessageRequest.builder()
-                .queueUrl(this.responseQueueUrl)
-                .messageBody("ga_message")
-                .messageAttributes(messageAttributes)
-                .delaySeconds(0)
-                .build());
-        this.currentState = State.WAITING_FOR_ACK;
-        this.userRequestQueueUrl = queueUrls.requestUrl;
-        this.userResponseQueueUrl = queueUrls.responseUrl;
-        this.lastPingTime = System.currentTimeMillis();
-    }
-    
-    private void msgTypeConnectionAck(Map<String, String> msgContents) {
-        String receivedUUID = msgContents.get("UUID");
-        String vassarUrl = msgContents.get("vassar_url");
-        
-        if (receivedUUID.equals(this.uuid)) {
-            this.currentState = State.READY;
-            this.vassarRequestQueueUrl = vassarUrl;
-        }
-        else {
-            System.out.println("UUID does not match!");
-        }
-    }
-    
-    private void msgTypeStatusCheck(Map<String, String> msgContents) {
-        final Map<String, MessageAttributeValue> messageAttributes = new HashMap<>();
-        messageAttributes.put("msgType",
-                MessageAttributeValue.builder()
-                        .dataType("String")
-                        .stringValue("currentStatus")
-                        .build()
-        );
-        String currentStatus = "";
-        switch (this.currentState) {
-            case WAITING_FOR_USER:
-                currentStatus = "waiting_for_user";
-                break;
-            case WAITING_FOR_ACK:
-                currentStatus = "waiting_for_ack";
-                break;
-            case READY:
-                currentStatus = "ready";
-                break;
-        }
-        messageAttributes.put("current_status",
-                MessageAttributeValue.builder()
-                        .dataType("String")
-                        .stringValue(currentStatus)
-                        .build()
-        );
-        
-        this.sqsClient.sendMessage(SendMessageRequest.builder()
-                .queueUrl(this.userResponseQueueUrl)
-                .messageBody("ga_message")
-                .messageAttributes(messageAttributes)
-                .delaySeconds(0)
-                .build());
-        this.lastPingTime = System.currentTimeMillis();
-    }
-    
-    private void msgTypePing(Map<String, String> msgContents) {
-        this.lastPingTime = System.currentTimeMillis();
-        this.privateQueue.add("ping");
-        // Send ping ack back
-        final Map<String, MessageAttributeValue> messageAttributes = new HashMap<>();
-        messageAttributes.put("msgType",
-                              MessageAttributeValue.builder()
-                                .dataType("String")
-                                .stringValue("pingAck")
-                                .build()
-        );
-        messageAttributes.put("UUID",
-                              MessageAttributeValue.builder()
-                                .dataType("String")
-                                .stringValue(this.uuid)
-                                .build()
-        );
-        this.sqsClient.sendMessage(SendMessageRequest.builder()
-                                    .queueUrl(this.userResponseQueueUrl)
-                                    .messageBody("ga_message")
-                                    .messageAttributes(messageAttributes)
-                                    .delaySeconds(0)
-                                    .build());
-    }
-
-    // ---> ALGORITHMS
-    private void msgTypeStartGa(Map<String, String> msgContents) {  
+    private void msgTypeStartGa(Map<String, String> msgContents) {
         String maxEvals  = msgContents.get("maxEvals");
         String crossoverProbability  = msgContents.get("crossoverProbability");
         String mutationProbability  = msgContents.get("mutationProbability");
+        String vassar_request_queue = msgContents.get("VASSAR_REQUEST_QUEUE");
+        String vassar_response_queue = msgContents.get("VASSAR_RESPONSE_QUEUE");
         int groupId  = Integer.parseInt(msgContents.get("group_id"));
         int problemId  = Integer.parseInt(msgContents.get("problem_id"));
         int datasetId  = Integer.parseInt(msgContents.get("dataset_id"));
+        this.datasetId = datasetId;
+        this.problemId = problemId;
+        String objective_str = msgContents.get("objectives");
+        List<String> objective_list = Arrays.asList(objective_str.split(","));
+
+        // --> Set internal status
+        this.sendRunningStatus(groupId, problemId, datasetId);
+
+
         String testedFeature = msgContents.getOrDefault("tested_feature", "");
         
         System.out.println("\n-------------------- ALGORITHM REQUEST --------------------");
@@ -564,6 +396,7 @@ public class Consumer implements Runnable {
         System.out.println("----------------> GROUP ID: " + groupId);
         System.out.println("--------------> PROBLEM ID: " + problemId);
         System.out.println("--------------> DATASET ID: " + datasetId);
+        System.out.println("--------------> OBJECTIVES: " + objective_list);
         System.out.println("--------------> APOLLO URL: " + this.apolloUrl);
         System.out.println("------> AWS STACK ENDPOINT: " + this.awsStackEndpoint);
         System.out.println("--------> VASSAR QUEUE URL: " + this.vassarRequestQueueUrl);
@@ -580,7 +413,7 @@ public class Consumer implements Runnable {
         }
         final SqsClient sqsClient = sqsClientBuilder.build();
         
-        Algorithm process = new Algorithm.Builder(this.userResponseQueueUrl, this.vassarRequestQueueUrl)
+        Algorithm process = new Algorithm.Builder(this.privateResponseQueue, vassar_request_queue)
                 .setSqsClient(sqsClient)
                 .setGroupId(groupId)
                 .setProblemId(problemId)
@@ -590,6 +423,7 @@ public class Consumer implements Runnable {
                 .setCrossoverProbability(Double.parseDouble(crossoverProbability))
                 .setMutationProbability(Double.parseDouble(mutationProbability))
                 .setTestedFeature(testedFeature)
+                .setObjectiveList(objective_list)
                 .setPrivateQueue(this.privateQueue)
                 .getProblemData(problemId, datasetId)
                 .build();
@@ -601,7 +435,12 @@ public class Consumer implements Runnable {
 
     private int msgTypeStopGa(Map<String, String> msgContents) {
         System.out.println("---> STOPPING GA");
-        
+
+        // --> Save dataset before finishing
+        // this.saveDataset();
+
+        this.sendReadyStatus();
+
         if (this.algorithm != null && this.algorithm.isAlive()) {
             this.privateQueue.add("stop");
             return 0;
@@ -653,138 +492,79 @@ public class Consumer implements Runnable {
         }
     }
 
-    private class QueueUrls {
-        public String requestUrl;
-        public String responseUrl;
+
+    // --> HELPERS
+    private ApolloClient newApolloClient(){
+        OkHttpClient http   = new OkHttpClient.Builder().build();
+        return ApolloClient.builder().serverUrl(this.apolloUrl).okHttpClient(http).build();
     }
 
-    private QueueUrls createUserQueues(String userId) {
-        String requestQueueName = "user-queue-ga-request-" + userId;
-        String responseQueueName = "user-queue-ga-response-" + userId;
-        Map<QueueAttributeName, String> queueAttrs = new HashMap<>();
-        queueAttrs.put(QueueAttributeName.MESSAGE_RETENTION_PERIOD, Integer.toString(5*60));
-        queueAttrs.put(QueueAttributeName.REDRIVE_POLICY, "{\"maxReceiveCount\":\"3\", \"deadLetterTargetArn\":\"" + this.deadLetterQueueArn + "\"}");
-        
-        String newUserRequestQueueUrl = "";
-        if (!this.queueExistsByName(requestQueueName)) {
-            CreateQueueRequest createQueueRequest = CreateQueueRequest.builder()
-                .queueName(requestQueueName)
-                .attributes(queueAttrs)
-                .build();
-            CreateQueueResponse response = this.sqsClient.createQueue(createQueueRequest);
-            newUserRequestQueueUrl = response.queueUrl();
-        }
-        else {
-            newUserRequestQueueUrl = this.getQueueUrl(requestQueueName);
-            SetQueueAttributesRequest setAttrReq = SetQueueAttributesRequest.builder()
-                .queueUrl(newUserRequestQueueUrl)
-                .attributes(queueAttrs)
-                .build();
-            this.sqsClient.setQueueAttributes(setAttrReq);
-        }
-        
-        String newUserResponseQueueUrl = "";
-        if (!this.queueExistsByName(responseQueueName)) {
-            CreateQueueRequest createQueueRequest = CreateQueueRequest.builder()
-                .queueName(responseQueueName)
-                .attributes(queueAttrs)
-                .build();
-            CreateQueueResponse response = this.sqsClient.createQueue(createQueueRequest);
-            newUserResponseQueueUrl = response.queueUrl();
-        }
-        else {
-            newUserResponseQueueUrl = this.getQueueUrl(responseQueueName);
-            SetQueueAttributesRequest setAttrReq = SetQueueAttributesRequest.builder()
-                .queueUrl(newUserResponseQueueUrl)
-                .attributes(queueAttrs)
-                .build();
-            this.sqsClient.setQueueAttributes(setAttrReq);
-        }
-        
-        QueueUrls returnVal = new QueueUrls();
-        returnVal.requestUrl = newUserRequestQueueUrl;
-        returnVal.responseUrl = newUserResponseQueueUrl;
-        
-        return returnVal;
-    }
+    private void saveDataset(){
+        ApolloClient client = this.newApolloClient();
+        JsonObject all_data = new JsonObject();
 
-    private void downsizeAwsService() {
-        // Only do this if in AWS
-        long timeSinceLastRequest = System.currentTimeMillis() - this.lastDownsizeRequestTime;
-        if (System.getenv("DEPLOYMENT_TYPE").equals("AWS") && timeSinceLastRequest > 5*60*1000) {
-            this.lastDownsizeRequestTime = System.currentTimeMillis();
-            // Check service for number of tasks
-            String clusterArn = System.getenv("CLUSTER_ARN");
-            String serviceArn = System.getenv("SERVICE_ARN");
-            DescribeServicesRequest request = DescribeServicesRequest.builder()
-                                                                     .cluster(clusterArn)
-                                                                     .services(serviceArn)
-                                                                     .build();
-            DescribeServicesResponse response = this.ecsClient.describeServices(request);
-            if (response.hasServices()) {
-                Service service = response.services().get(0);
-                Integer desiredCount = service.desiredCount();
-                // Downscale tasks if more than 5
-                if (desiredCount > 5) {
-                    UpdateServiceRequest updateRequest = UpdateServiceRequest.builder()
-                                                                             .cluster(clusterArn)
-                                                                             .desiredCount(desiredCount-1)
-                                                                             .service(serviceArn)
-                                                                             .build();
-                    UpdateServiceResponse updateResponse = this.ecsClient.updateService(updateRequest);
-                    
-                    // Close myself as the extra task
-                    String taskArn = getTaskArn();
-                    StopTaskRequest stopRequest = StopTaskRequest.builder()
-                                                                 .cluster(clusterArn)
-                                                                 .task(taskArn)
-                                                                 .build();
-                    StopTaskResponse stopResponse = this.ecsClient.stopTask(stopRequest);
-                }
-            }
+        // --> 1. Get list of instruments
+        InstrumentQuery instrumentQuery = InstrumentQuery.builder().problem_id(this.problemId).build();
+        ApolloCall<InstrumentQuery.Data> apolloCall  = client.query(instrumentQuery);
+        Observable<Response<InstrumentQuery.Data>> observable  = Rx2Apollo.from(apolloCall);
+        List<InstrumentQuery.Item> instruments = observable.blockingFirst().getData().items();
+        JsonArray instrument_list = new JsonArray();
+        for(InstrumentQuery.Item item: instruments){
+            instrument_list.add(item.name());
         }
-    }
+        all_data.add("instruments", instrument_list);
 
-    private String getTaskArn() {
-        String taskArn = "";
-        try {
-            String baseUrl = System.getenv("ECS_CONTAINER_METADATA_URI_V4");
-            URL url = new URL(baseUrl + "/task");
-            
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("GET");
-            conn.connect();
-            
-            //Getting the response code
-            int responsecode = conn.getResponseCode();
-            
-            if (responsecode != 200) {
-                throw new RuntimeException("HttpResponseCode: " + responsecode);
+        // --> 2. Get list of orbits
+        ProblemOrbitJoinQuery orbitQuery = ProblemOrbitJoinQuery.builder().problem_id(this.problemId).build();
+        ApolloCall<ProblemOrbitJoinQuery.Data> apolloCall2  = client.query(orbitQuery);
+        Observable<Response<ProblemOrbitJoinQuery.Data>> observable2  = Rx2Apollo.from(apolloCall2);
+        List<ProblemOrbitJoinQuery.Item> orbits = observable2.blockingFirst().getData().items();
+        JsonArray orbit_list = new JsonArray();
+        for(ProblemOrbitJoinQuery.Item item: orbits){
+            orbit_list.add(item.Orbit().name());
+        }
+        all_data.add("orbits", orbit_list);
+
+        // --> 3. Get all architectures
+        ArchitectureQuery architectureQuery = ArchitectureQuery.builder()
+                .problem_id(this.problemId)
+                .dataset_id(this.datasetId)
+                .build();
+        ApolloCall<ArchitectureQuery.Data> apolloCall3  = client.query(architectureQuery);
+        Observable<Response<ArchitectureQuery.Data>> observable3  = Rx2Apollo.from(apolloCall3);
+        List<ArchitectureQuery.Item> architectures = observable3.blockingFirst().getData().items();
+        JsonArray all_archs = new JsonArray();
+        for(ArchitectureQuery.Item item: architectures){
+            JsonObject arch = new JsonObject();
+            arch.addProperty("input", item.input());
+            arch.addProperty("cost", Double.parseDouble(item.cost().toString()));
+            arch.addProperty("data_continuity", Double.parseDouble(item.data_continuity().toString()));
+            arch.addProperty("programmatic_risk", Double.parseDouble(item.programmatic_risk().toString()));
+            arch.addProperty("fairness", Double.parseDouble(item.fairness().toString()));
+            for(ArchitectureQuery.ArchitectureScoreExplanation explanation: item.ArchitectureScoreExplanations()){
+                String panel_name = explanation.Stakeholder_Needs_Panel().name();
+                arch.addProperty(panel_name, Double.parseDouble(explanation.satisfaction().toString()));
             }
-            else {
-                String inline = "";
-                Scanner scanner = new Scanner(url.openStream());
-                
-                //Write all the JSON data into a string using a scanner
-                while (scanner.hasNext()) {
-                    inline += scanner.nextLine();
-                }
-                
-                //Close the scanner
-                scanner.close();
-                
-                //Using the JSON simple library parse the string into a json object
-                JSONParser parse = new JSONParser();
-                JSONObject responseObj = (JSONObject) parse.parse(inline);
-                
-                //Get the required object from the above created object
-                taskArn = (String)responseObj.get("TaskARN");
-            }
-            conn.disconnect();
-            
-        } catch (Exception e) {
+            all_archs.add(arch);
+        }
+        all_data.add("designs", all_archs);
+
+        // --> 4. Save all data to file
+        SimpleDateFormat dateFormat = new SimpleDateFormat( "yyyy-MM-dd-HH-mm-ss" );
+        String stamp = dateFormat.format( new Date() );
+        String file_path = "/app/results/";
+        String file_name = "ClimateCentric2__" + stamp + "__.json";
+        String full_file = file_path + file_name;
+        try{
+            Gson gson = new GsonBuilder().setPrettyPrinting().create();
+            FileWriter outputfile = new FileWriter(full_file);
+            gson.toJson(all_data, outputfile);
+            outputfile.flush();
+            outputfile.close();
+        }
+        catch (Exception e){
             e.printStackTrace();
+            System.out.println("WRITING EXCEPTION");
         }
-        return taskArn;
     }
 }

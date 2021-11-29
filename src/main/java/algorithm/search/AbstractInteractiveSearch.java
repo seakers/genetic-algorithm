@@ -54,7 +54,7 @@ public abstract class AbstractInteractiveSearch implements Callable<org.moeafram
     public Algorithm call() {
 
         int populationSize = (int) properties.getDouble("populationSize", 600);
-        int maxEvaluations = (int) properties.getDouble("maxEvaluations", 10000);
+        int maxEvaluations = (int) properties.getDouble("maxEvaluations", 30000);
 
         // run the executor using the listener to collect results
         System.out.println("---> Starting " + alg.getClass().getSimpleName() + " on " + alg.getProblem().getName() + " with pop size: " + populationSize);
@@ -89,10 +89,10 @@ public abstract class AbstractInteractiveSearch implements Callable<org.moeafram
 
 
 
-            long currentTime = System.currentTimeMillis();
-            if (currentTime - lastPingTime > 60*1000) {
-                this.isStopped = true;
-            }
+//            long currentTime = System.currentTimeMillis();
+//            if (currentTime - lastPingTime > 60*1000) {
+//                this.isStopped = true;
+//            }
 
             if (this.isStopped) {
                 break;
@@ -147,7 +147,7 @@ public abstract class AbstractInteractiveSearch implements Callable<org.moeafram
             }
 
             // Remove other archs with ga=true, improves_hv=false as not improving
-            Data deletionData = this.deleteNonImprovingArchitectures(this.datasetId);
+            // Data deletionData = this.deleteNonImprovingArchitectures(this.datasetId);
 
             // Change the archive reference to the new one
             archive = new Population(newArchive);

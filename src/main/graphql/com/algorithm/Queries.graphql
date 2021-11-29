@@ -1,3 +1,30 @@
+
+
+query Instrument($problem_id: Int) {
+    items: Instrument(where: {Join__Problem_Instruments: {problem_id: {_eq: $problem_id}}}) {
+        id
+        name
+        attributes: Join__Instrument_Characteristics {
+            Instrument_Attribute {
+                id
+                name
+            }
+            value
+        }
+    }
+}
+
+query ProblemOrbitJoin($problem_id: Int!) {
+    items: Join__Problem_Orbit(where: {problem_id: {_eq: $problem_id}}){
+        Orbit {
+            id
+            name
+        }
+    }
+}
+
+
+
 query OrbitCount($problem_id: Int!){
     item: Join__Problem_Orbit_aggregate(where: {problem_id: {_eq: $problem_id}}) {
         aggregate {

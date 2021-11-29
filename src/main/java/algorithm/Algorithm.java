@@ -24,11 +24,7 @@ import org.moeaframework.core.operator.binary.BitFlip;
 import org.moeaframework.core.variable.BinaryVariable;
 import org.moeaframework.util.TypedProperties;
 
-import java.util.Random;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.*;
 
 import com.algorithm.ArchitectureQuery;
@@ -42,6 +38,7 @@ public class Algorithm implements Runnable {
 
     private int maxEvals;
     private int initialPopSize;
+    private List<String> objective_list;
     private double crossoverProbability;
     private double mutationProbability;
     private String testedFeature;
@@ -67,6 +64,7 @@ public class Algorithm implements Runnable {
 
         private int maxEvals;
         private int initialPopSize;
+        private List<String> objective_list;
         private double crossoverProbability;
         private double mutationProbability;
         private String testedFeature;
@@ -89,6 +87,11 @@ public class Algorithm implements Runnable {
 
         public Builder setApolloClient(ApolloClient client) {
             this.apollo = client;
+            return this;
+        }
+
+        public Builder setObjectiveList(List<String> objective_list){
+            this.objective_list = objective_list;
             return this;
         }
 
@@ -196,6 +199,7 @@ public class Algorithm implements Runnable {
             build.sqs = this.sqs;
             build.initialPopulation = this.initialPopulation;
             build.privateQueue = this.privateQueue;
+            build.objective_list = this.objective_list;
 
             build.properties = new TypedProperties();
             build.properties.setInt("maxEvaluations", this.maxEvals);
@@ -203,7 +207,7 @@ public class Algorithm implements Runnable {
             build.properties.setDouble("crossoverProbability", this.crossoverProbability);
             build.properties.setDouble("mutationProbability", this.mutationProbability);
 
-            build.assignmentProblem = new AssigningProblem(this.sqs, apollo, new int[]{1}, this.numOrbits, this.numInstruments, this.vassarQueueUrl, problemId, datasetId);
+            build.assignmentProblem = new AssigningProblem(this.sqs, apollo, new int[]{1}, this.numOrbits, this.numInstruments, this.vassarQueueUrl, problemId, datasetId, this.objective_list);
             return build;
         }
 
@@ -232,42 +236,39 @@ public class Algorithm implements Runnable {
 
         for(ArchitectureQuery.Item item: this.initialPopulation){
 
+            // --> INPUTS
             String        stringInputs      = item.input();
-            double        science           = Double.parseDouble(item.science().toString());
-            double        cost              = Double.parseDouble(item.cost().toString());
-            double        data_continuity   = Double.parseDouble(item.data_continuity().toString());
-            double        programmatic_risk = Double.parseDouble(item.programmatic_risk().toString());
-            double        fairness          = Double.parseDouble(item.fairness().toString());
 
-            HashMap<String, Double> panel_map = new HashMap<>();
+            // --> OBJECTIVES
+            HashMap<String, Double> objective_map = new HashMap<>();
+            objective_map.put("cost", Double.parseDouble(item.cost().toString()));
+            objective_map.put("data_continuity", Double.parseDouble(item.data_continuity().toString()));
+            objective_map.put("programmatic_risk", Double.parseDouble(item.programmatic_risk().toString()));
+            objective_map.put("fairness", Double.parseDouble(item.fairness().toString()));
             for(ArchitectureQuery.ArchitectureScoreExplanation explanation: item.ArchitectureScoreExplanations()){
                 String panel_name = explanation.Stakeholder_Needs_Panel().name();
-                panel_map.put(panel_name, Double.parseDouble(explanation.satisfaction().toString()));
+                objective_map.put(panel_name, -1.0 * Double.parseDouble(explanation.satisfaction().toString()));
             }
 
 
 
             List<Boolean> inputs            = this.stringToBool(stringInputs);
 
-            AssigningArchitecture newArch = new AssigningArchitecture(new int[]{1}, this.numInstruments, this.numOrbits, 7);
+            AssigningArchitecture newArch = new AssigningArchitecture(new int[]{1}, this.numInstruments, this.numOrbits, this.objective_list.size());
 
             for (int j = 1; j < newArch.getNumberOfVariables(); ++j) {
                 BinaryVariable var = new BinaryVariable(1);
                 var.set(0, inputs.get(j-1));
                 newArch.setVariable(j, var);
             }
-            newArch.setObjective(0, cost);
-            newArch.setObjective(1, data_continuity);
-            newArch.setObjective(2, programmatic_risk);
-            newArch.setObjective(3, fairness);
-            newArch.setObjective(4, -panel_map.get("Oceanic"));
-            newArch.setObjective(5, -panel_map.get("Atmosphere"));
-            newArch.setObjective(6, -panel_map.get("Terrestrial"));
+
+            int counter = 0;
+            for(String key: this.objective_list){
+                newArch.setObjective(counter, objective_map.get(key));
+                counter++;
+            }
             newArch.setAlreadyEvaluated(true);
             newArch.setDatabaseId(item.id());
-
-            System.out.println("---> SOLUTION: " + stringInputs + " " + science + " " + cost);
-
             this.solutions.add(newArch);
         }
 
@@ -275,7 +276,7 @@ public class Algorithm implements Runnable {
         int num_random = min_pop_size - this.solutions.size();
         for(int x = 0; x < num_random; x++){
             List<Boolean> inputs = this.getRandomDesign(this.numOrbits * this.numInstruments);
-            AssigningArchitecture newArch = new AssigningArchitecture(new int[]{1}, this.numInstruments, this.numOrbits, 7);
+            AssigningArchitecture newArch = new AssigningArchitecture(new int[]{1}, this.numInstruments, this.numOrbits, this.objective_list.size());
             for (int j = 1; j < newArch.getNumberOfVariables(); ++j) {
                 BinaryVariable var = new BinaryVariable(1);
                 var.set(0, inputs.get(j-1));
@@ -304,7 +305,26 @@ public class Algorithm implements Runnable {
         // INITIALIZE
         InjectedInitialization initialization = new InjectedInitialization(assignmentProblem, this.solutions.size(), this.solutions);
 
-        double[]                   epsilonDouble = new double[]{1, 1, .01, .01, .0001, .0001, .0001};
+        // cost, data continuity, programmatic risk, fairness, oceanic, atmosphere, terrestrial
+        HashMap<String, Double> obj_epsilon_double = new HashMap<>();
+        obj_epsilon_double.put("cost", 1.0);
+        obj_epsilon_double.put("data_continuity", 1.0);
+        obj_epsilon_double.put("programmatic_risk", .01);
+        obj_epsilon_double.put("fairness", .01);
+        obj_epsilon_double.put("Oceanic", .0001);
+        obj_epsilon_double.put("Atmosphere", .0001);
+        obj_epsilon_double.put("Terrestrial", .0001);
+
+        List<Double> epsilonDoubleList = new ArrayList<>();
+        for(String obj: this.objective_list){
+            epsilonDoubleList.add(obj_epsilon_double.get(obj));
+        }
+        double[] epsilonDouble = epsilonDoubleList.stream().mapToDouble(d -> d).toArray();
+        // double[]                   epsilonDouble = new double[]{1, 1, .01, .01, .0001, .0001, .0001};
+
+
+
+
         Population                 population    = new Population();
         EpsilonBoxDominanceArchive archive       = new EpsilonBoxDominanceArchive(epsilonDouble);
         ChainedComparator          comp          = new ChainedComparator(new ParetoObjectiveComparator());
@@ -360,6 +380,9 @@ public class Algorithm implements Runnable {
         } catch (InterruptedException | ExecutionException ex) {
             ex.printStackTrace();
         }
+
+
+
 
         final Map<String, MessageAttributeValue> messageAttributes2 = new HashMap<>();
         messageAttributes2.put("msgType",
