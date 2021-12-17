@@ -22,10 +22,11 @@ public class PingConsumer implements Runnable {
     private ConcurrentLinkedQueue<Map<String, String>> mainConsumerQueue;
     private ConcurrentLinkedQueue<Map<String, String>> mainConsumerQueueResponse;
 
-    private String internal_status = "";
-    private String internal_problem_id = "";
-    private String internal_group_id = "";
-    private String internal_dataset_id = "";
+    // --> SERVICE STATUS
+    private String internal_status = "-----";
+    private String internal_problem_id = "-----";
+    private String internal_group_id = "-----";
+    private String internal_dataset_id = "-----";
 
 
     public PingConsumer(ConcurrentLinkedQueue<Map<String, String>> mainConsumerQueue, ConcurrentLinkedQueue<Map<String, String>> mainConsumerQueueResponse) {
@@ -56,14 +57,63 @@ public class PingConsumer implements Runnable {
         return sqsClientBuilder.build();
     }
 
-    private boolean update_status() {
-        while (!this.mainConsumerQueue.isEmpty()) {
-            Map<String, String> msgContents = this.mainConsumerQueue.poll();
-            if(msgContents.get("msgType").equals("stop")){
-                return false;
+    public void run() {
+        boolean running = true;
+        int counter = 0;
+
+        while (running) {
+            if(counter % 10 == 0){
+                System.out.println("-----> (Ping) Loop iteration: " + counter);
             }
-            this.internal_status = msgContents.get("STATUS");
-            if(this.internal_status.equals("RUNNING")){
+
+            // --> 1. Update Status / break
+            running = this.update_status();
+            if(!running){
+                System.out.println("--> PING CONSUMER STOPPED FROM STOP MESSAGE");
+                break;
+            }
+
+            // --> 2. Message operations
+            this.message_loop();
+
+            // --> 3. Check timers / break
+            running = this.check_timers();
+            if(!running){
+                System.out.println("--> PING CONSUMER STOPPED FROM TIMERS");
+                break;
+            }
+
+            counter++;
+        }
+
+        this.shutdown_message();
+        System.out.println("--> STATUS CONSUMER FINISHED");
+    }
+
+
+
+
+
+//   _   _           _       _         _____ _        _
+//  | | | |         | |     | |       /  ___| |      | |
+//  | | | |_ __   __| | __ _| |_ ___  \ `--.| |_ __ _| |_ _   _ ___
+//  | | | | '_ \ / _` |/ _` | __/ _ \  `--. \ __/ _` | __| | | / __|
+//  | |_| | |_) | (_| | (_| | ||  __/ /\__/ / || (_| | |_| |_| \__ \
+//   \___/| .__/ \__,_|\__,_|\__\___| \____/ \__\__,_|\__|\__,_|___/
+//        | |
+//        |_|
+
+
+    private boolean update_status() {
+        if(!this.mainConsumerQueue.isEmpty()) {
+            Map<String, String> msgContents = this.mainConsumerQueue.poll();
+            if(msgContents.containsKey("msgType")){
+                if(msgContents.get("msgType").equals("stop")){
+                    return false;
+                }
+            }
+            if(msgContents.containsKey("STATUS")){
+                this.internal_status = msgContents.get("STATUS");
                 this.internal_problem_id = msgContents.get("PROBLEM_ID");
                 this.internal_group_id = msgContents.get("GROUP_ID");
                 this.internal_dataset_id = msgContents.get("DATASET_ID");
@@ -72,110 +122,32 @@ public class PingConsumer implements Runnable {
         return true;
     }
 
-    public void run() {
-        boolean running = true;
 
-        while (running) {
+//    ___  ___                                 _   _                 _ _ _
+//    |  \/  |                                | | | |               | | (_)
+//    | .  . | ___  ___ ___  __ _  __ _  ___  | |_| | __ _ _ __   __| | |_ _ __   __ _
+//    | |\/| |/ _ \/ __/ __|/ _` |/ _` |/ _ \ |  _  |/ _` | '_ \ / _` | | | '_ \ / _` |
+//    | |  | |  __/\__ \__ \ (_| | (_| |  __/ | | | | (_| | | | | (_| | | | | | | (_| |
+//    \_|  |_/\___||___/___/\__,_|\__, |\___| \_| |_/\__,_|_| |_|\__,_|_|_|_| |_|\__, |
+//                                 __/ |                                          __/ |
+//                                |___/
 
-            // --> 1. Check queue for messages
-            List<Message> messages = this.getMessages();
+    private void message_loop(){
 
-            // --> 2. Get message contents
-            List<Map<String, String>> messagesContents = new ArrayList<>();
-            for (Message msg : messages) {
-                HashMap<String, String> msgContents = this.processMessage(msg, true);
-                messagesContents.add(msgContents);
-            }
+        List<Message> messages = this.getMessages();
 
-            // --> 2.5 Update Status
-            running = this.update_status();
-
-            // --> 3. Handle Ping
-            for (Map<String, String> msgContents : messagesContents) {
-                this.lastPingTime = System.currentTimeMillis();
-                this.handleStatus(msgContents);
-            }
-
-            // --> 4. Delete addressed pings
-            this.deleteMessages(messages);
-
-            if(!running){
-                break;
-            }
-
-            // --> 5. Check timers
-            running = this.check_criteria();
-
+        List<Map<String, String>> messagesContents = new ArrayList<>();
+        for (Message msg : messages) {
+            HashMap<String, String> msgContents = this.processMessage(msg, true);
+            messagesContents.add(msgContents);
         }
 
-        this.shutdown_message();
-        System.out.println("--> STATUS CONSUMER FINISHED");
-    }
-
-    private void shutdown_message(){
-        Map<String, String> shutdown_msg = new HashMap<>();
-        shutdown_msg.put("msgType", "exit");
-        this.mainConsumerQueueResponse.add(shutdown_msg);
-    }
-
-    private boolean check_criteria() {
-        if (!this.check_timers() || !this.mainConsumerQueue.isEmpty()) {
-            return false;
+        for (Map<String, String> msgContents : messagesContents) {
+            this.msgTypePing(msgContents);
         }
-        return true;
-    }
 
-    private boolean check_timers() {
-        return System.currentTimeMillis() - this.lastPingTime <= 60 * 60 * 1000;
-    }
+        this.deleteMessages(messages);
 
-    private void handleStatus(Map<String, String> msgContents) {
-        final Map<String, MessageAttributeValue> messageAttributes = new HashMap<>();
-        messageAttributes.put("msgType",
-                MessageAttributeValue.builder()
-                        .dataType("String")
-                        .stringValue("statusAck")
-                        .build()
-        );
-        if (internal_status.equals("READY")) {
-            messageAttributes.put("status",
-                    MessageAttributeValue.builder()
-                            .dataType("String")
-                            .stringValue(this.internal_status)
-                            .build()
-            );
-        } else if (internal_status.equals("RUNNING")) {
-            messageAttributes.put("status",
-                    MessageAttributeValue.builder()
-                            .dataType("String")
-                            .stringValue(this.internal_status)
-                            .build()
-            );
-            messageAttributes.put("PROBLEM_ID",
-                    MessageAttributeValue.builder()
-                            .dataType("String")
-                            .stringValue(this.internal_problem_id)
-                            .build()
-            );
-            messageAttributes.put("GROUP_ID",
-                    MessageAttributeValue.builder()
-                            .dataType("String")
-                            .stringValue(this.internal_group_id)
-                            .build()
-            );
-            messageAttributes.put("DATASET_ID",
-                    MessageAttributeValue.builder()
-                            .dataType("String")
-                            .stringValue(this.internal_dataset_id)
-                            .build()
-            );
-        }
-        this.sqs_client.sendMessage(SendMessageRequest.builder()
-                .queueUrl(this.pingResponseQueue)
-                .messageBody("ga_ping_ack")
-                .messageAttributes(messageAttributes)
-                .delaySeconds(0)
-                .build());
     }
 
     private List<Message> getMessages() {
@@ -209,6 +181,49 @@ public class PingConsumer implements Runnable {
         return contents;
     }
 
+    private void msgTypePing(Map<String, String> msgContents) {
+        // Update ping timers
+        this.lastPingTime = System.currentTimeMillis();
+
+        final Map<String, MessageAttributeValue> messageAttributes = new HashMap<>();
+        messageAttributes.put("msgType",
+                MessageAttributeValue.builder()
+                        .dataType("String")
+                        .stringValue("statusAck")
+                        .build()
+        );
+        messageAttributes.put("status",
+                MessageAttributeValue.builder()
+                        .dataType("String")
+                        .stringValue(this.internal_status)
+                        .build()
+        );
+        messageAttributes.put("PROBLEM_ID",
+                MessageAttributeValue.builder()
+                        .dataType("String")
+                        .stringValue(this.internal_problem_id)
+                        .build()
+        );
+        messageAttributes.put("GROUP_ID",
+                MessageAttributeValue.builder()
+                        .dataType("String")
+                        .stringValue(this.internal_group_id)
+                        .build()
+        );
+        messageAttributes.put("DATASET_ID",
+                MessageAttributeValue.builder()
+                        .dataType("String")
+                        .stringValue(this.internal_dataset_id)
+                        .build()
+        );
+        this.sqs_client.sendMessage(SendMessageRequest.builder()
+                .queueUrl(this.pingResponseQueue)
+                .messageBody("ga_ping_ack")
+                .messageAttributes(messageAttributes)
+                .delaySeconds(0)
+                .build());
+    }
+
     private void deleteMessages(List<Message> messages) {
         for (Message message : messages) {
             DeleteMessageRequest deleteMessageRequest = DeleteMessageRequest.builder()
@@ -219,5 +234,26 @@ public class PingConsumer implements Runnable {
         }
 
     }
+
+
+
+//     _____ _           _      _
+//    /  ___| |         | |    | |
+//    \ `--.| |__  _   _| |_ __| | _____      ___ __
+//     `--. \ '_ \| | | | __/ _` |/ _ \ \ /\ / / '_ \
+//    /\__/ / | | | |_| | || (_| | (_) \ V  V /| | | |
+//    \____/|_| |_|\__,_|\__\__,_|\___/ \_/\_/ |_| |_|
+
+    private void shutdown_message(){
+        System.out.println("--> SHUTTING DOWN PING CONSUMER");
+        Map<String, String> shutdown_msg = new HashMap<>();
+        shutdown_msg.put("msgType", "exit");
+        this.mainConsumerQueueResponse.add(shutdown_msg);
+    }
+
+    private boolean check_timers() {
+        return System.currentTimeMillis() - this.lastPingTime <= 60 * 60 * 1000;
+    }
+
 
 }

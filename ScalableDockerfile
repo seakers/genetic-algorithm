@@ -18,6 +18,12 @@ RUN mvn install
 
 
 
+## 4. INSTALL APP ##
+WORKDIR /app
+COPY /. /app/.
+
+RUN ./gradlew installDist
+
 
 #######################
 ### Final Container ###
@@ -25,56 +31,14 @@ RUN mvn install
 
 
 FROM amazoncorretto:11
-COPY --from=BUILD_TOOL /root/.m2 /root/.m2
 
+WORKDIR /app
+COPY /. /app/.
 
-### Prod Variables ###
-#ENV QUEUE_URL http://localstack:4576
-#ENV AWS_STACK_ENDPOINT http://localstack:4576
-#ENV REGION US_EAST_2
-#ENV MESSAGE_RETRIEVAL_SIZE 1
-#ENV MESSAGE_QUERY_TIMEOUT 5
-#ENV RABBITMQ_HOST rabbitmq
-#ENV DEV True
-#ENV DEBUG True
-
-
-ENV INPUT_QUEUE_URL=http://localhost:4576/queue/algorithm_queue
-ENV EVAL_QUEUE_URL=http://localhost:4576/queue/vassar_queue
-ENV APOLLO_URL=http://graphql:8080/v1/graphql
-ENV REGION=US_EAST_2
-ENV MESSAGE_RETRIEVAL_SIZE=1
-ENV MESSAGE_QUERY_TIMEOUT=5
-ENV RABBITMQ_HOST=rabbitmq
-ENV DEV=True
-ENV DEBUG=True
-ENV AWS_STACK_ENDPOINT=http://localstack:4576
-ENV AWS_ACCESS_KEY_ID=AKIAJVM34C5MCCWRJCCQ
-ENV AWS_SECRET_ACCESS_KEY=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
-
-
-
-
-# -- DEPS --
-WORKDIR /installs
-
-RUN yum update -y && \
-    yum upgrade -y && \
-    yum install git wget unzip tar -y
-
-# -- GRADLE --
-RUN wget https://services.gradle.org/distributions/gradle-6.0-bin.zip && \
-    unzip gradle-6.0-bin.zip && \
-    rm gradle-6.0-bin.zip
-ENV PATH="/installs/gradle-6.0/bin:${PATH}"
-
-
-COPY /. /app/genetic-algorithm
-
+COPY --from=BUILD_TOOL /app/build/install/genetic-algorithm /app/genetic-algorithm
 
 WORKDIR /app/genetic-algorithm
-# RUN gradle generateApolloSources
-CMD gradle run
+CMD ./bin/genetic-algorithm
 
 
 

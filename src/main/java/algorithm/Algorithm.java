@@ -56,6 +56,7 @@ public class Algorithm implements Runnable {
     private SqsClient sqs;
     private List<ArchitectureQuery.Item> initialPopulation;
     private ConcurrentLinkedQueue<String> privateQueue;
+    private String gaEvalResponseQueue;
 
     private org.moeaframework.core.Algorithm eMOEA;
 
@@ -79,6 +80,7 @@ public class Algorithm implements Runnable {
         private SqsClient sqs;
         private List<ArchitectureQuery.Item> initialPopulation;
         private ConcurrentLinkedQueue<String> privateQueue;
+        private String gaEvalResponseQueue;
 
         public Builder(String userResponseUrl, String vassarQueueUrl) {
             this.userResponseUrl = userResponseUrl;
@@ -87,6 +89,11 @@ public class Algorithm implements Runnable {
 
         public Builder setApolloClient(ApolloClient client) {
             this.apollo = client;
+            return this;
+        }
+
+        public Builder setGaEvalResponseQueue(String gaEvalResponseQueue){
+            this.gaEvalResponseQueue = gaEvalResponseQueue;
             return this;
         }
 
@@ -200,6 +207,7 @@ public class Algorithm implements Runnable {
             build.initialPopulation = this.initialPopulation;
             build.privateQueue = this.privateQueue;
             build.objective_list = this.objective_list;
+            build.gaEvalResponseQueue = this.gaEvalResponseQueue;
 
             build.properties = new TypedProperties();
             build.properties.setInt("maxEvaluations", this.maxEvals);
@@ -228,8 +236,10 @@ public class Algorithm implements Runnable {
         return bool_list;
     }
 
+    // Change so that it finds the pareto front of all the current architectures
     public void buildInitialSolutions() {
         System.out.println("\n-------------------------------------------------------- INITIAL SOLUTIONS");
+        System.out.println(this.objective_list);
         int min_pop_size = 10;
 
         this.solutions = new ArrayList<>();
@@ -249,6 +259,8 @@ public class Algorithm implements Runnable {
                 String panel_name = explanation.Stakeholder_Needs_Panel().name();
                 objective_map.put(panel_name, -1.0 * Double.parseDouble(explanation.satisfaction().toString()));
             }
+            System.out.println("--> OBJECTIVE MAPPER");
+            System.out.println(objective_map);
 
 
 
@@ -264,8 +276,13 @@ public class Algorithm implements Runnable {
 
             int counter = 0;
             for(String key: this.objective_list){
-                newArch.setObjective(counter, objective_map.get(key));
-                counter++;
+                if(objective_map.containsKey(key)){
+                    newArch.setObjective(counter, objective_map.get(key));
+                }
+                else{
+                    System.out.println("--> MISSING OBJECTIVE VALUE: " + key);
+                    newArch.setObjective(counter, 0);
+                }
             }
             newArch.setAlreadyEvaluated(true);
             newArch.setDatabaseId(item.id());

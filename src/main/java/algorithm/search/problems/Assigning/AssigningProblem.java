@@ -82,6 +82,11 @@ public class AssigningProblem extends AbstractProblem implements SystemArchitect
         this.objective_list = objective_list;
     }
 
+
+
+
+
+
     @Override
     public void evaluate(Solution sltn) {
         AssigningArchitecture arch = (AssigningArchitecture) sltn;
@@ -114,6 +119,7 @@ public class AssigningProblem extends AbstractProblem implements SystemArchitect
         }
 
         System.out.println("---> EVALUATING ARCHITECTURE: " + input);
+        System.out.println(this.objective_list);
 
         if (this.runningStatusCheck(input)) {
             arch.setAlreadyExisted(true);
@@ -139,10 +145,16 @@ public class AssigningProblem extends AbstractProblem implements SystemArchitect
                             .stringValue(String.valueOf(this.datasetId))
                             .build()
             );
-            messageAttributes.put("ga",
+            messageAttributes.put("eval_type",
                     MessageAttributeValue.builder()
                             .dataType("String")
-                            .stringValue("true")
+                            .stringValue("NDSM")
+                            .build()
+            );
+            messageAttributes.put("index_type",
+                    MessageAttributeValue.builder()
+                            .dataType("String")
+                            .stringValue("GA")
                             .build()
             );
             System.out.println("---> Processing architecure");
@@ -155,9 +167,14 @@ public class AssigningProblem extends AbstractProblem implements SystemArchitect
 
             // Now wait for response
             try{
+
+
+
                 while(!this.runningStatusCheck(input)){
                     System.out.println("---> processing...");
                     TimeUnit.SECONDS.sleep(2);
+                    // CHECK GA EVALUATION RESPONSE QUEUE HERE
+
                 }
             }
             catch(Exception e){
@@ -184,7 +201,13 @@ public class AssigningProblem extends AbstractProblem implements SystemArchitect
         // Add results to arch!!!
         int counter = 0;
         for(String key: this.objective_list){
-            arch.setObjective(counter, objective_map.get(key));
+            if(objective_map.containsKey(key)){
+                arch.setObjective(counter, objective_map.get(key));
+            }
+            else{
+                System.out.println("--> MISSING OBJECTIVE VALUE: " + key);
+                arch.setObjective(counter, 0);
+            }
             counter++;
         }
         arch.setAlreadyEvaluated(true);
