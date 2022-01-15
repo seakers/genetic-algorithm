@@ -102,6 +102,7 @@ public abstract class AbstractInteractiveSearch implements Callable<org.moeafram
 
             // If error happened during evaluation
             if (((AssigningArchitecture)pop.get(pop.size()-1)).getDatabaseId() == -1) {
+                System.out.println("--- Stopping due to error during evaluation.");
                 break;
             }
 
