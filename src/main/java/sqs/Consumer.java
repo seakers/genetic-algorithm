@@ -514,6 +514,13 @@ public class Consumer implements Runnable {
                         .stringValue(currentStatus)
                         .build()
         );
+
+        messageAttributes.put("UUID",
+                MessageAttributeValue.builder()
+                        .dataType("String")
+                        .stringValue(this.uuid)
+                        .build()
+        );
         
         this.sqsClient.sendMessage(SendMessageRequest.builder()
                 .queueUrl(this.userResponseQueueUrl)
