@@ -1,6 +1,7 @@
 package algorithm;
 
 import algorithm.search.BinaryInputInteractiveSearch;
+import algorithm.search.BulkSearch;
 import algorithm.search.operators.ApplyFeature;
 import algorithm.search.operators.EitherVariation;
 import algorithm.search.problems.Assigning.AssigningArchitecture;
@@ -37,12 +38,17 @@ import software.amazon.awssdk.services.sqs.model.MessageAttributeValue;
 import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
 
 
-public class Algorithm implements Runnable {
+public class GAThread implements Runnable {
+    public enum RunType {
+        INTERACTIVE, BULK
+    }
 
     private int maxEvals;
     private int initialPopSize;
+    private int maxSeconds;
     private double crossoverProbability;
     private double mutationProbability;
+    private RunType runType;
     private String testedFeature;
     private TypedProperties properties;
     private String vassarQueueUrl;
@@ -59,15 +65,17 @@ public class Algorithm implements Runnable {
     private List<ArchitectureQuery.Item> initialPopulation;
     private ConcurrentLinkedQueue<String> privateQueue;
 
-    private org.moeaframework.core.Algorithm eMOEA;
+    private Algorithm eMOEA;
 
 
     public static class Builder {
 
         private int maxEvals;
         private int initialPopSize;
+        private int maxSeconds;
         private double crossoverProbability;
         private double mutationProbability;
+        private RunType runType;
         private String testedFeature;
         private String vassarQueueUrl;
         private String userResponseUrl;
@@ -93,6 +101,11 @@ public class Algorithm implements Runnable {
 
         public Builder setMaxEvals(int maxEvals) {
             this.maxEvals = maxEvals;
+            return this;
+        }
+
+        public Builder setMaxSeconds(int maxSeconds) {
+            this.maxSeconds = maxSeconds;
             return this;
         }
 
@@ -123,6 +136,11 @@ public class Algorithm implements Runnable {
 
         public Builder setMutationProbability(double mutationProbability) {
             this.mutationProbability = mutationProbability;
+            return this;
+        }
+
+        public Builder setRunType(RunType runType) {
+            this.runType = runType;
             return this;
         }
 
@@ -173,40 +191,19 @@ public class Algorithm implements Runnable {
             this.initialPopSize    = items.size();
             this.numOrbits         = this.getNumOrbits(problemId);
             this.numInstruments    = this.getNumInstr(problemId);
-//            this.solutions      = new ArrayList<>(this.initialPopSize);
-//
-//            for(ArchitectureQuery.Item item: items){
-//
-//                String        string_inputs = item.input();
-//                double        science       = Double.parseDouble(item.science().toString());
-//                double        cost          = Double.parseDouble(item.cost().toString());
-//                List<Boolean> inputs        = this.stringToBool(string_inputs);
-//
-//                AssigningArchitecture new_arch = new AssigningArchitecture(new int[]{1}, this.getNumInstr(problem_id), this.getNumOrbits(problem_id), 2);
-//
-//                for (int j = 1; j < new_arch.getNumberOfVariables(); ++j) {
-//                    BinaryVariable var = new BinaryVariable(1);
-//                    var.set(0, inputs.get(j-1));
-//                    new_arch.setVariable(j, var);
-//                }
-//                new_arch.setObjective(0, -science);
-//                new_arch.setObjective(1, cost);
-//                new_arch.setAlreadyEvaluated(true);
-//
-//                System.out.println("---> SOLUTION: " + string_inputs + " " + science + " " + cost);
-//
-//                this.solutions.add(new_arch);
-//            }
+
             return this;
         }
 
-        public Algorithm build() {
-            Algorithm build = new Algorithm();
+        public GAThread build() {
+            GAThread build = new GAThread();
 
             build.initialPopSize = this.initialPopSize;
             build.maxEvals = this.maxEvals;
+            build.maxSeconds = this.maxSeconds;
             build.crossoverProbability = this.crossoverProbability;
             build.mutationProbability = this.mutationProbability;
+            build.runType = this.runType;
             build.testedFeature = this.testedFeature;
             build.userResponseUrl = this.userResponseUrl;
             build.vassarQueueUrl = this.vassarQueueUrl;
@@ -226,31 +223,12 @@ public class Algorithm implements Runnable {
             build.properties.setDouble("crossoverProbability", this.crossoverProbability);
             build.properties.setDouble("mutationProbability", this.mutationProbability);
 
-            build.assignmentProblem = new AssigningProblem(this.sqs, apollo, new int[]{1}, this.numOrbits, this.numInstruments, this.vassarQueueUrl, problemId, datasetId);
-
-
-//            InjectedInitialization initialization = new InjectedInitialization(assignmentProblem, this.solutions.size(), this.solutions);
-//
-//            double[]                   epsilonDouble = new double[]{0.001, 1};
-//            Population                 population    = new Population();
-//            EpsilonBoxDominanceArchive archive       = new EpsilonBoxDominanceArchive(epsilonDouble);
-//            ChainedComparator          comp          = new ChainedComparator(new ParetoObjectiveComparator());
-//            TournamentSelection        selection     = new TournamentSelection(2, comp);
-//
-//            Variation singlecross      = new OnePointCrossover(crossoverProbability);
-//            Variation bitFlip          = new BitFlip(mutationProbability);
-//            Variation intergerMutation = new IntegerUM(mutationProbability);
-//            CompoundVariation var      = new CompoundVariation(singlecross, bitFlip, intergerMutation);
-//
-//            build.eMOEA = new EpsilonMOEA(assignmentProblem, population, archive, selection, var, initialization);
-//
-//
-//            System.out.println("----> eMOEA BUILT");
+            boolean fastEval = this.runType == RunType.BULK;
+            build.assignmentProblem = new AssigningProblem(this.sqs, apollo, new int[]{1}, this.numOrbits, this.numInstruments, this.vassarQueueUrl, problemId, datasetId, fastEval);
             return build;
         }
 
     }
-
 
     private List<Boolean> stringToBool(String inputs) {
         List<Boolean> bool_list = new ArrayList<>();
@@ -314,7 +292,7 @@ public class Algorithm implements Runnable {
         Variation bitFlip          = new BitFlip(mutationProbability);
         Variation integerMutation = new IntegerUM(mutationProbability);
         CompoundVariation var;
-        if (this.testedFeature != "") {
+        if (!this.testedFeature.equals("")) {
             System.out.println("----> Adding hypothesis testing to GA!");
             ApplyFeature applyFeature = new ApplyFeature(this.testedFeature, this.numInstruments, this.numOrbits);
             EitherVariation eitherVar = new EitherVariation(singlecross, applyFeature, 0.3, 0.7);
@@ -336,11 +314,20 @@ public class Algorithm implements Runnable {
 
         this.initialize();
 
-        ExecutorService                                     pool   = Executors.newFixedThreadPool(1);
-        CompletionService<org.moeaframework.core.Algorithm> ecs    = new ExecutorCompletionService<>(pool);
+        ExecutorService              pool = Executors.newFixedThreadPool(1);
+        CompletionService<Algorithm> ecs  = new ExecutorCompletionService<>(pool);
 
         // SUBMIT MOEA
-        ecs.submit(new BinaryInputInteractiveSearch(this.eMOEA, this.properties, this.privateQueue, this.sqs, this.apollo, this.userResponseUrl, this.datasetId));
+        switch (this.runType) {
+            case INTERACTIVE:
+                ecs.submit(new BinaryInputInteractiveSearch(this.eMOEA, this.properties, this.privateQueue, this.sqs, this.apollo, this.userResponseUrl, this.datasetId));
+                break;
+            case BULK:
+                ecs.submit(new BulkSearch(this.eMOEA, this.properties, this.privateQueue, this.sqs, this.apollo, this.userResponseUrl, this.datasetId, this.problemId, this.maxSeconds));
+                break;
+            default:
+                System.out.println("Run type not supported!");
+        }
 
         final Map<String, MessageAttributeValue> messageAttributes = new HashMap<>();
         messageAttributes.put("msgType",
@@ -357,7 +344,7 @@ public class Algorithm implements Runnable {
                 .build());
 
         try {
-            org.moeaframework.core.Algorithm alg = ecs.take().get();
+            Algorithm alg = ecs.take().get();
         } catch (InterruptedException | ExecutionException ex) {
             ex.printStackTrace();
         }

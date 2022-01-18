@@ -1,6 +1,8 @@
 package sqs;
 
-import algorithm.Algorithm;
+import algorithm.GAThread;
+import algorithm.GAThread.RunType;
+
 import com.apollographql.apollo.ApolloClient;
 import okhttp3.OkHttpClient;
 
@@ -67,7 +69,7 @@ public class Consumer implements Runnable {
     private boolean   running;
     private int       messageRetrievalSize;
     private int       messageQueryTimeout;
-    private Thread    algorithm;
+    private Thread    gaThread;
     private Region    region;
     private String    awsStackEndpoint;
     private State     currentState = State.WAITING_FOR_USER;
@@ -76,6 +78,7 @@ public class Consumer implements Runnable {
     private long      lastDownsizeRequestTime = System.currentTimeMillis();
     private int       userId;
     private ConcurrentLinkedQueue<String> privateQueue;
+    private boolean   pendingReset = false;
     
     public static class Builder{
         
@@ -186,16 +189,20 @@ public class Consumer implements Runnable {
             // CHECK CONNECTION QUEUE
             List<Message> messages = new ArrayList<>();
             List<Message> connectionMessages = new ArrayList<>();
-            connectionMessages = this.getMessages(this.requestQueueUrl, 1, 1);
-            connectionMessages = this.handleMessages(this.requestQueueUrl, connectionMessages);
-            messages.addAll(connectionMessages);
+            List<Message> userMessages = new ArrayList<>();
+            if (this.currentState == State.WAITING_FOR_USER) {
+                connectionMessages = this.getMessages(this.requestQueueUrl, 1, 1);
+                connectionMessages = this.handleMessages(this.requestQueueUrl, connectionMessages);
+                messages.addAll(connectionMessages);
+            }
             
             // CHECK USER QUEUE
-            List<Message> userMessages = new ArrayList<>();
-            if (this.userRequestQueueUrl != null) {
-                userMessages = this.getMessages(this.userRequestQueueUrl, 5, 1);
-                userMessages = this.handleMessages(this.userRequestQueueUrl, userMessages);
-                messages.addAll(userMessages);
+            if (this.currentState == State.WAITING_FOR_ACK || this.currentState == State.READY) {
+                if (this.userRequestQueueUrl != null) {
+                    userMessages = this.getMessages(this.userRequestQueueUrl, 5, 1);
+                    userMessages = this.handleMessages(this.userRequestQueueUrl, userMessages);
+                    messages.addAll(userMessages);
+                }
             }
             
             for (Message msg: messages) {
@@ -218,13 +225,19 @@ public class Consumer implements Runnable {
                         this.msgTypeStatusCheck(msgContents);
                     }
                     else if(msgType.equals("start_ga")){
-                        this.msgTypeStartGa(msgContents);
+                        this.msgTypeStartGa(msgContents, "interactive");
+                    }
+                    else if(msgType.equals("start_bulk_ga")){
+                        this.msgTypeStartGa(msgContents, "bulk");
                     }
                     else if(msgType.equals("stop_ga")){
                         this.msgTypeStopGa(msgContents);
                     }
                     else if (msgType.equals("ping")) {
                         this.msgTypePing(msgContents);
+                    }
+                    else if (msgType.equals("reset")) {
+                        this.msgTypeReset(msgContents);
                     }
                     else if(msgType.equals("exit")){
                         System.out.println("----> Exiting gracefully");
@@ -241,6 +254,12 @@ public class Consumer implements Runnable {
             }
             if (!userMessages.isEmpty()) {
                 this.deleteMessages(userMessages, this.userRequestQueueUrl);
+            }
+            if (this.pendingReset) {
+                this.currentState = State.WAITING_FOR_USER;
+                this.userRequestQueueUrl = null;
+                this.userResponseQueueUrl = null;
+                this.pendingReset = false;
             }
             counter++;
         }
@@ -396,10 +415,10 @@ public class Consumer implements Runnable {
                 allowedTypes = Arrays.asList("connectionRequest", "statusCheck");
                 break;
             case WAITING_FOR_ACK:
-                allowedTypes = Arrays.asList("connectionAck", "statusCheck");
+                allowedTypes = Arrays.asList("connectionAck", "statusCheck", "reset");
                 break;
             case READY:
-                allowedTypes = Arrays.asList("start_ga", "stop_ga", "ping", "statusCheck", "exit");
+                allowedTypes = Arrays.asList("start_ga", "start_bulk_ga", "stop_ga", "ping", "statusCheck", "reset", "exit");
                 break;
         }
         // Check for both allowedTypes and UUID match
@@ -423,7 +442,9 @@ public class Consumer implements Runnable {
         this.userId = Integer.parseInt(userId);
         
         // Create queues for private communication
-        QueueUrls queueUrls = createUserQueues(userId);
+        int run_id = Integer.parseInt(msgContents.getOrDefault("run_id", "-1"));
+        QueueUrls queueUrls = createUserQueues(userId, run_id);
+        
         
         final Map<String, MessageAttributeValue> messageAttributes = new HashMap<>();
         messageAttributes.put("msgType",
@@ -556,8 +577,12 @@ public class Consumer implements Runnable {
                                     .build());
     }
 
+    private void msgTypeReset(Map<String, String> msgContents) {
+        this.pendingReset = true;
+    }
+
     // ---> ALGORITHMS
-    private void msgTypeStartGa(Map<String, String> msgContents) {  
+    private void msgTypeStartGa(Map<String, String> msgContents, String runType) {  
         String maxEvals  = msgContents.get("maxEvals");
         String crossoverProbability  = msgContents.get("crossoverProbability");
         String mutationProbability   = msgContents.get("mutationProbability");
@@ -566,11 +591,13 @@ public class Consumer implements Runnable {
         int problemId  = Integer.parseInt(msgContents.get("problem_id"));
         int datasetId  = Integer.parseInt(msgContents.get("dataset_id"));
         String testedFeature = msgContents.getOrDefault("tested_feature", "");
+        int maxSeconds = Integer.parseInt(msgContents.getOrDefault("max_seconds", "0"));
         
         System.out.println("\n-------------------- ALGORITHM REQUEST --------------------");
         System.out.println("---------------> MAX EVALS: " + maxEvals);
         System.out.println("---> CROSSOVER PROBABILITY: " + crossoverProbability);
         System.out.println("----> MUTATION PROBABILITY: " + mutationProbability);
+        System.out.println("----------------> RUN TYPE: " + runType);
         System.out.println("----------------> GROUP ID: " + groupId);
         System.out.println("--------------> PROBLEM ID: " + problemId);
         System.out.println("--------------> DATASET ID: " + datasetId);
@@ -580,7 +607,7 @@ public class Consumer implements Runnable {
         System.out.println("----------------------------------------------------------\n");
         //this.consumerSleep(3);
         
-        OkHttpClient http   = new OkHttpClient.Builder().build();
+        OkHttpClient http   = new OkHttpClient.Builder().connectTimeout(600, TimeUnit.SECONDS).readTimeout(600, TimeUnit.SECONDS).writeTimeout(600, TimeUnit.SECONDS).callTimeout(600, TimeUnit.SECONDS).build();
         ApolloClient apollo = ApolloClient.builder().serverUrl(this.apolloUrl).okHttpClient(http).build();
         
         SqsClientBuilder sqsClientBuilder = SqsClient.builder()
@@ -589,40 +616,50 @@ public class Consumer implements Runnable {
             sqsClientBuilder.endpointOverride(URI.create(this.awsStackEndpoint));
         }
         final SqsClient sqsClient = sqsClientBuilder.build();
+
+        RunType gaRunType = null;
+        if (runType.equals("interactive")) {
+            gaRunType = RunType.INTERACTIVE;
+        }
+        else if (runType.equals("bulk")) {
+            gaRunType = RunType.BULK;
+        }
         
-        Algorithm process = new Algorithm.Builder(algorithmUrl, this.vassarRequestQueueUrl)
+        GAThread process = new GAThread.Builder(algorithmUrl, this.vassarRequestQueueUrl)
                 .setSqsClient(sqsClient)
                 .setGroupId(groupId)
                 .setProblemId(problemId)
                 .setDatasetId(datasetId)
                 .setApolloClient(apollo)
                 .setMaxEvals(Integer.parseInt(maxEvals))
+                .setMaxSeconds(maxSeconds)
                 .setCrossoverProbability(Double.parseDouble(crossoverProbability))
                 .setMutationProbability(Double.parseDouble(mutationProbability))
+                .setRunType(gaRunType)
                 .setTestedFeature(testedFeature)
                 .setPrivateQueue(this.privateQueue)
                 .getProblemData(problemId, datasetId)
                 .build();
 
         // RUN CONSUMER
-        if (this.algorithm != null && this.algorithm.isAlive()) {
+        if (this.gaThread != null && this.gaThread.isAlive()) {
             try {
                 this.privateQueue.add("stop");
-                this.algorithm.join();
+                this.gaThread.join();
             }
             catch (InterruptedException e) {
                 e.printStackTrace();
             }
         }
         this.privateQueue.clear();
-        this.algorithm = new Thread(process);
-        this.algorithm.start();
+        this.gaThread = new Thread(process);
+        this.gaThread.start();
     }
 
     private int msgTypeStopGa(Map<String, String> msgContents) {
         System.out.println("---> STOPPING GA");
         
-        if (this.algorithm != null && this.algorithm.isAlive()) {
+        if (this.gaThread != null && this.gaThread.isAlive()) {
             this.privateQueue.add("stop");
             return 0;
         }
@@ -695,9 +732,13 @@ public class Consumer implements Runnable {
         public String responseUrl;
     }
 
-    private QueueUrls createUserQueues(String userId) {
+    private QueueUrls createUserQueues(String userId, int run_id) {
         String requestQueueName = "user-queue-ga-request-" + userId;
         String responseQueueName = "user-queue-ga-response-" + userId;
+        if (run_id != -1) {
+            requestQueueName += "-" + run_id;
+            responseQueueName += "-" + run_id;
+        }
         Map<QueueAttributeName, String> queueAttrs = new HashMap<>();
         queueAttrs.put(QueueAttributeName.MESSAGE_RETENTION_PERIOD, Integer.toString(5*60));
         queueAttrs.put(QueueAttributeName.REDRIVE_POLICY, "{\"maxReceiveCount\":\"3\", \"deadLetterTargetArn\":\"" + this.deadLetterQueueArn + "\"}");

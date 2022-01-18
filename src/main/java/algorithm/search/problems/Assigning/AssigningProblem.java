@@ -61,10 +61,12 @@ public class AssigningProblem extends AbstractProblem implements SystemArchitect
 
     private final int timeout = 10000;
 
+    private final boolean fastEval;
+
     /**
      * @param alternativesForNumberOfSatellites
      */
-    public AssigningProblem(SqsClient sqs, ApolloClient apollo, int[] alternativesForNumberOfSatellites, int numOrbits, int numInstruments, String queueUrl, int problemId, int datasetId) {
+    public AssigningProblem(SqsClient sqs, ApolloClient apollo, int[] alternativesForNumberOfSatellites, int numOrbits, int numInstruments, String queueUrl, int problemId, int datasetId, boolean fastEval) {
         //2 decisions for Choosing and Assigning Patterns
         super(1 + numInstruments * numOrbits, 2);
         this.numInstruments = numInstruments;
@@ -75,6 +77,7 @@ public class AssigningProblem extends AbstractProblem implements SystemArchitect
         this.problemId = problemId;
         this.datasetId = datasetId;
         this.apollo = apollo;
+        this.fastEval = fastEval;
     }
 
     @Override
@@ -110,7 +113,7 @@ public class AssigningProblem extends AbstractProblem implements SystemArchitect
 
         System.out.println("---> EVALUATING ARCHITECTURE: " + input);
 
-        int timeout = 30; // Fail after 30 seconds of waiting for an architecture
+        int timeout = 60; // Fail after 60 seconds of waiting for an architecture
         int counter = 0;
         if (this.runningStatusCheck(input)) {
             arch.setAlreadyExisted(true);
@@ -142,6 +145,15 @@ public class AssigningProblem extends AbstractProblem implements SystemArchitect
                             .stringValue("true")
                             .build()
             );
+            if (fastEval) {
+                messageAttributes.put("fast",
+                        MessageAttributeValue.builder()
+                                .dataType("String")
+                                .stringValue("true")
+                                .build()
+                );
+            }
+            
             System.out.println("---> Processing architecure");
             this.sqs.sendMessage(SendMessageRequest.builder()
                                                 .queueUrl(this.queueUrl)
@@ -189,7 +201,6 @@ public class AssigningProblem extends AbstractProblem implements SystemArchitect
             arch.setDatabaseId(-1);
         }
     }
-
 
     public boolean runningStatusCheck(String input){
         ArchitectureSubscriptionQuery subQuery = ArchitectureSubscriptionQuery.builder()

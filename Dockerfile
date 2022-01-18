@@ -45,14 +45,6 @@ RUN yum update -y && \
     yum upgrade -y && \
     yum install git wget unzip tar -y
 
-
-# -- GRADLE --
-RUN wget https://services.gradle.org/distributions/gradle-6.0-bin.zip && \
-    unzip gradle-6.0-bin.zip && \
-    rm gradle-6.0-bin.zip
-ENV PATH="/installs/gradle-6.0/bin:${PATH}"
-
-
 # COPY /Users/gabeapaza/repositories/seakers/daphne/codebase/genetic-algorithm /app/genetic-algorithm
 
 # -- GRAPHQL SCHEMA --

@@ -1,10 +1,7 @@
 package algorithm.search;
 
-import com.google.gson.*;
 import com.algorithm.DeleteNonImprovingArchitecturesMutation;
-import com.algorithm.MarkArchitectureAsImprovingHVMutation;
 import com.algorithm.DeleteNonImprovingArchitecturesMutation.Data;
-import com.algorithm.MarkArchitectureAsImprovingHVMutation.Update_Architecture_by_pk;
 import com.apollographql.apollo.ApolloCall;
 import com.apollographql.apollo.ApolloClient;
 import com.apollographql.apollo.api.Response;
@@ -14,6 +11,7 @@ import org.moeaframework.algorithm.AbstractEvolutionaryAlgorithm;
 import org.moeaframework.core.Algorithm;
 import org.moeaframework.core.Population;
 import org.moeaframework.core.Solution;
+import org.moeaframework.core.variable.BinaryVariable;
 import org.moeaframework.util.TypedProperties;
 
 import algorithm.search.problems.Assigning.AssigningArchitecture;
@@ -22,13 +20,20 @@ import software.amazon.awssdk.services.sqs.SqsClient;
 import software.amazon.awssdk.services.sqs.model.MessageAttributeValue;
 import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
 
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.nio.charset.Charset;
+import java.nio.file.DirectoryStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
-public abstract class AbstractInteractiveSearch implements Callable<Algorithm> {
+public class BulkSearch implements Callable<Algorithm> {
     private final Algorithm alg;
     private final TypedProperties properties;
     private boolean isStopped;
@@ -37,8 +42,10 @@ public abstract class AbstractInteractiveSearch implements Callable<Algorithm> {
     private final ApolloClient apollo;
     private String userQueueUrl;
     private int datasetId;
+    private int problemId;
+    private int maxSeconds;
 
-    public AbstractInteractiveSearch(Algorithm alg, TypedProperties properties, ConcurrentLinkedQueue<String> privateQueue, SqsClient sqsClient, ApolloClient apollo, String userQueueUrl, int datasetId) {
+    public BulkSearch(Algorithm alg, TypedProperties properties, ConcurrentLinkedQueue<String> privateQueue, SqsClient sqsClient, ApolloClient apollo, String userQueueUrl, int datasetId, int problemId, int maxSeconds) {
         this.alg = alg;
         this.properties = properties;
         this.isStopped = false;
@@ -47,6 +54,8 @@ public abstract class AbstractInteractiveSearch implements Callable<Algorithm> {
         this.apollo = apollo;
         this.userQueueUrl = userQueueUrl;
         this.datasetId = datasetId;
+        this.problemId = problemId;
+        this.maxSeconds = maxSeconds;
     }
 
     @Override
@@ -55,13 +64,38 @@ public abstract class AbstractInteractiveSearch implements Callable<Algorithm> {
         int populationSize = (int) properties.getDouble("populationSize", 600);
         int maxEvaluations = (int) properties.getDouble("maxEvaluations", 10000);
 
+        Path csvFile = null;
+        try {
+            // Count how many runs of this problem ID + dataset ID have already happened
+            Path resultsDir = Path.of("/results");
+            int fileCount = 0;
+            try (DirectoryStream<Path> stream = Files.newDirectoryStream(resultsDir, Integer.toString(problemId) + "_" + Integer.toString(datasetId) + "_*")) {
+                for (Path entry: stream) {
+                    fileCount += 1;
+                }
+            }
+            csvFile = Path.of("/results/" + Integer.toString(problemId) + "_" + Integer.toString(datasetId) + "_" + Integer.toString(fileCount) + ".csv");
+            Files.createFile(csvFile);
+        }
+        catch (IOException e) {
+            e.printStackTrace();
+        }
+        
         // run the executor using the listener to collect results
         System.out.println("---> Starting " + alg.getClass().getSimpleName() + " on " + alg.getProblem().getName() + " with pop size: " + populationSize);
         alg.step();
         long startTime = System.currentTimeMillis();
-        long lastPingTime = System.currentTimeMillis();
 
         Population archive = new Population(((AbstractEvolutionaryAlgorithm)alg).getArchive());
+
+        ArrayList<Solution> allSolutions = new ArrayList<>();
+        ArrayList<Long> allSolsTime = new ArrayList<>();
+        Population initPop = ((AbstractEvolutionaryAlgorithm) alg).getPopulation();
+        for (int i = 0; i < initPop.size(); i++) {
+            initPop.get(i).setAttribute("NFE", 0);
+            allSolutions.add(initPop.get(i));
+            allSolsTime.add(0L);
+        }
 
         while (!alg.isTerminated() && (alg.getNumberOfEvaluations() < maxEvaluations) && !isStopped) {
             // External conditions for stopping
@@ -73,18 +107,13 @@ public abstract class AbstractInteractiveSearch implements Callable<Algorithm> {
                         System.out.println("--- Stopping due to external message.");
                         this.isStopped = true;
                     }
-                    if (msgContents.equals("ping")) {
-                        lastPingTime = System.currentTimeMillis();
-                        // Send ping to thread
-                        this.sendPingBack();
-                    }
                 }
                 this.privateQueue.addAll(returnMessages);
             }
 
             long currentTime = System.currentTimeMillis();
-            if (currentTime - lastPingTime > 90*1000) {
-                System.out.println("--- Stopping due to expired pings.");
+            if (this.maxSeconds > 0 && currentTime - startTime > this.maxSeconds*1000) {
+                System.out.println("--- Stopping from time.");
                 this.isStopped = true;
             }
 
@@ -117,28 +146,26 @@ public abstract class AbstractInteractiveSearch implements Callable<Algorithm> {
                 boolean alreadyThere = archive.contains(newSol);
                 if (!alreadyThere) { // if it is a new solution
                     // Check if it wasn't already in main database
-                    if (!((AssigningArchitecture)newSol).getAlreadyExisted()) {
-                        System.out.println("---> Sending new arch!");
-                        newSol.setAttribute("NFE", alg.getNumberOfEvaluations());
+                    System.out.println("---> Saving new arch!");
+                    newSol.setAttribute("NFE", alg.getNumberOfEvaluations());
 
-                        // Mark arch as improves_hv so it shows in frontend
-                        this.markArchitectureAsImprovingHV(((AssigningArchitecture)newSol).getDatabaseId());
-    
-                        // Notify brain of new GA Architecture for proactive purposes (no need to send arch due to GraphQL)
-                        final Map<String, MessageAttributeValue> messageAttributes = new HashMap<>();
-                        messageAttributes.put("msgType",
-                                MessageAttributeValue.builder()
-                                        .dataType("String")
-                                        .stringValue("newGaArch")
-                                        .build()
-                        );
-                        this.sqsClient.sendMessage(SendMessageRequest.builder()
-                                .queueUrl(this.userQueueUrl)
-                                .messageBody("ga_message")
-                                .messageAttributes(messageAttributes)
-                                .delaySeconds(0)
-                                .build());
-                    }
+                    // Notify brain of new GA Architecture for proactive purposes (no need to send arch due to GraphQL)
+                    final Map<String, MessageAttributeValue> messageAttributes = new HashMap<>();
+                    messageAttributes.put("msgType",
+                            MessageAttributeValue.builder()
+                                    .dataType("String")
+                                    .stringValue("newGaArch")
+                                    .build()
+                    );
+                    this.sqsClient.sendMessage(SendMessageRequest.builder()
+                            .queueUrl(this.userQueueUrl)
+                            .messageBody("ga_message")
+                            .messageAttributes(messageAttributes)
+                            .delaySeconds(0)
+                            .build());
+
+                    allSolutions.add(newSol);
+                    allSolsTime.add((currentTime-startTime)/1000);
                 }
                 else {
                     System.out.println("---> Architecture already there");
@@ -146,28 +173,54 @@ public abstract class AbstractInteractiveSearch implements Callable<Algorithm> {
                 }
             }
 
-            // Remove other archs with ga=true, improves_hv=false as not improving
-            Data deletionData = this.deleteNonImprovingArchitectures(this.datasetId);
-
             // Change the archive reference to the new one
             archive = new Population(newArchive);
         }
         System.out.println("--> Cause of ending: isStopped - " + this.isStopped + "; isTerminated - " + alg.isTerminated() + "; numOfEvaluations - " + alg.getNumberOfEvaluations());
 
+        // Remove all archs from DB, as this is bulk running
+        Data deletionData = this.deleteNonImprovingArchitectures(this.datasetId);
+
         alg.terminate();
         long finishTime = System.currentTimeMillis();
         System.out.println("Done with optimization. Execution time: " + ((finishTime - startTime) / 1000) + "s");
 
-        return alg;
-    }
+        System.out.println("Saving all found architectures to file " + csvFile.toString());
 
-    public Update_Architecture_by_pk markArchitectureAsImprovingHV(int databaseId){
-        MarkArchitectureAsImprovingHVMutation archMutation = MarkArchitectureAsImprovingHVMutation.builder()
-                                                                    .id(databaseId)
-                                                                    .build();
-        ApolloCall<MarkArchitectureAsImprovingHVMutation.Data> apolloCall = this.apollo.mutate(archMutation);
-        Observable<Response<MarkArchitectureAsImprovingHVMutation.Data>> observable = Rx2Apollo.from(apolloCall);
-        return observable.blockingFirst().getData().update_Architecture_by_pk();
+        try {
+            try(BufferedWriter buffer =
+                    Files.newBufferedWriter(csvFile,
+                                            Charset.defaultCharset(),
+                                            StandardOpenOption.WRITE)){
+                int iter = 0;
+                for(Solution sol: allSolutions) {
+                    StringBuilder lineBuilder = new StringBuilder(80);
+                    String inputs = "";
+                    for (int j = 1; j < sol.getNumberOfVariables(); ++j) {
+                        BinaryVariable var = (BinaryVariable)sol.getVariable(j);
+                        boolean binaryVal = var.get(0);
+                        inputs += binaryVal ? "1" : "0";
+                    }
+                    lineBuilder.append(inputs);
+                    lineBuilder.append(",");
+                    lineBuilder.append(-sol.getObjective(0));
+                    lineBuilder.append(",");
+                    lineBuilder.append(sol.getObjective(1));
+                    lineBuilder.append(",");
+                    lineBuilder.append(sol.getAttribute("NFE"));
+                    lineBuilder.append(",");
+                    lineBuilder.append(allSolsTime.get(iter));
+                    buffer.append(lineBuilder.toString());
+                    buffer.newLine();
+                    iter += 1;
+                }
+            }
+        }
+        catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        return alg;
     }
 
     public Data deleteNonImprovingArchitectures(int datasetId){
@@ -177,24 +230,5 @@ public abstract class AbstractInteractiveSearch implements Callable<Algorithm> {
         ApolloCall<DeleteNonImprovingArchitecturesMutation.Data> apolloCall = this.apollo.mutate(archMutation);
         Observable<Response<DeleteNonImprovingArchitecturesMutation.Data>> observable = Rx2Apollo.from(apolloCall);
         return observable.blockingFirst().getData();
-    }
-
-    public abstract JsonElement getJSONArchitecture(Solution architecture);
-
-    public void sendPingBack() {
-        // Notify brain of new GA Architecture for proactive purposes (no need to send arch due to GraphQL)
-        final Map<String, MessageAttributeValue> messageAttributes = new HashMap<>();
-        messageAttributes.put("msgType",
-                MessageAttributeValue.builder()
-                        .dataType("String")
-                        .stringValue("ping")
-                        .build()
-        );
-        this.sqsClient.sendMessage(SendMessageRequest.builder()
-                .queueUrl(this.userQueueUrl)
-                .messageBody("ga_message")
-                .messageAttributes(messageAttributes)
-                .delaySeconds(0)
-                .build());
     }
 }
