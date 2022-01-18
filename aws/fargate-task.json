@@ -16,7 +16,8 @@
         { "name": "MESSAGE_RETRIEVAL_SIZE", "value": "3" },
         { "name": "MESSAGE_QUERY_TIMEOUT", "value": "5" },
         { "name": "CLUSTER_ARN", "value": "arn:aws:ecs:us-east-2:923405430231:cluster/daphne-cluster" },
-        { "name": "SERVICE_ARN", "value": "arn:aws:ecs:us-east-2:923405430231:service/daphne-cluster/genetic-algorithm" }
+        { "name": "SERVICE_ARN", "value": "arn:aws:ecs:us-east-2:923405430231:service/daphne-cluster/genetic-algorithm" },
+        { "name": "JAVA_OPTS", "value": "-Xmx3840m"}
       ],
       "interactive": true,
       "logConfiguration": {

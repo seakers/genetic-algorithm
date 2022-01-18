@@ -113,7 +113,7 @@ public class AssigningProblem extends AbstractProblem implements SystemArchitect
 
         System.out.println("---> EVALUATING ARCHITECTURE: " + input);
 
-        int timeout = 60; // Fail after 60 seconds of waiting for an architecture
+        int timeout = 300; // Fail after 5 minutes of waiting for an architecture (longest one I've seen is 3m10s or so)
         int counter = 0;
         if (this.runningStatusCheck(input)) {
             arch.setAlreadyExisted(true);
