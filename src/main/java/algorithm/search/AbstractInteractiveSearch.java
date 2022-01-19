@@ -10,12 +10,20 @@ import com.apollographql.apollo.ApolloClient;
 import com.apollographql.apollo.api.Response;
 import com.apollographql.apollo.rx2.Rx2Apollo;
 
+import org.json.simple.JSONObject;
+import org.json.simple.parser.JSONParser;
+import org.json.simple.parser.ParseException;
 import org.moeaframework.algorithm.AbstractEvolutionaryAlgorithm;
+import org.moeaframework.algorithm.EpsilonMOEA;
 import org.moeaframework.core.Algorithm;
 import org.moeaframework.core.Population;
 import org.moeaframework.core.Solution;
+import org.moeaframework.core.Variation;
+import org.moeaframework.core.operator.CompoundVariation;
 import org.moeaframework.util.TypedProperties;
 
+import algorithm.search.operators.ApplyFeature;
+import algorithm.search.operators.EitherVariation;
 import algorithm.search.problems.Assigning.AssigningArchitecture;
 import io.reactivex.Observable;
 import software.amazon.awssdk.services.sqs.SqsClient;
@@ -37,8 +45,9 @@ public abstract class AbstractInteractiveSearch implements Callable<Algorithm> {
     private final ApolloClient apollo;
     private String userQueueUrl;
     private int datasetId;
+    private EitherVariation featureVariation;
 
-    public AbstractInteractiveSearch(Algorithm alg, TypedProperties properties, ConcurrentLinkedQueue<String> privateQueue, SqsClient sqsClient, ApolloClient apollo, String userQueueUrl, int datasetId) {
+    public AbstractInteractiveSearch(Algorithm alg, TypedProperties properties, ConcurrentLinkedQueue<String> privateQueue, SqsClient sqsClient, ApolloClient apollo, String userQueueUrl, int datasetId, EitherVariation featureVariation) {
         this.alg = alg;
         this.properties = properties;
         this.isStopped = false;
@@ -47,6 +56,7 @@ public abstract class AbstractInteractiveSearch implements Callable<Algorithm> {
         this.apollo = apollo;
         this.userQueueUrl = userQueueUrl;
         this.datasetId = datasetId;
+        this.featureVariation = featureVariation;
     }
 
     @Override
@@ -68,16 +78,37 @@ public abstract class AbstractInteractiveSearch implements Callable<Algorithm> {
             if (!this.privateQueue.isEmpty()) {
                 ArrayList<String> returnMessages = new ArrayList<>();
                 while (!this.privateQueue.isEmpty()) {
-                    String msgContents = this.privateQueue.poll();
-                    if (msgContents.equals("stop")) {
-                        System.out.println("--- Stopping due to external message.");
-                        this.isStopped = true;
+                    String msgString = this.privateQueue.poll();
+                    try {
+                        JSONParser parser = new JSONParser();
+                        JSONObject msgContents = (JSONObject)parser.parse(msgString);
+                        String msgType = (String)msgContents.get("type");
+                        if (msgType.equals("stop")) {
+                            System.out.println("--- Stopping due to external message.");
+                            this.isStopped = true;
+                        }
+                        if (msgType.equals("exploreFeature")) {
+                            System.out.println("--- Applying a feature.");
+                            ApplyFeature feat = (ApplyFeature)featureVariation.getVar2();
+                            String newFeature = (String)msgContents.get("feature");
+                            feat.setFeature(newFeature);
+                            if (newFeature.equals("")) {
+                                featureVariation.setProbabilities(1.0, 0.0);
+                            }
+                            else {
+                                featureVariation.setProbabilities(0.3, 0.7);
+                            }
+                        }
+                        if (msgType.equals("ping")) {
+                            lastPingTime = System.currentTimeMillis();
+                            // Send ping to thread
+                            this.sendPingBack();
+                        }
                     }
-                    if (msgContents.equals("ping")) {
-                        lastPingTime = System.currentTimeMillis();
-                        // Send ping to thread
-                        this.sendPingBack();
+                    catch (ParseException e) {
+                        e.printStackTrace();
                     }
+                    
                 }
                 this.privateQueue.addAll(returnMessages);
             }
@@ -92,14 +123,14 @@ public abstract class AbstractInteractiveSearch implements Callable<Algorithm> {
                 break;
             }
 
-            System.out.println("\n\n---> Algorithm Step");
+            System.out.println("\n---> Algorithm Step");
             alg.step();
 
-            System.out.println("\n\n---> Get population");
+            System.out.println("\n---> Get population");
             Population pop = ((AbstractEvolutionaryAlgorithm) alg).getPopulation();
 
             // Only send back those architectures that improve the pareto frontier
-            System.out.println("\n\n---> Get new population");
+            System.out.println("\n---> Get new population");
             Population newArchive = ((AbstractEvolutionaryAlgorithm)alg).getArchive();
 
             // If error happened during evaluation
@@ -109,7 +140,7 @@ public abstract class AbstractInteractiveSearch implements Callable<Algorithm> {
             }
 
             // GABE: this loop process the new architecture from the GA through rabbitmq
-            System.out.println("\n\n---> Compare new to old population");
+            System.out.println("\n---> Compare new to old population");
             for (int i = 0; i < newArchive.size(); ++i) {
 
                 // Check to see if we have a new solution
@@ -140,11 +171,8 @@ public abstract class AbstractInteractiveSearch implements Callable<Algorithm> {
                                 .build());
                     }
                 }
-                else {
-                    System.out.println("---> Architecture already there");
-                    System.out.println("---> newArchive (size): "+ newArchive.size());
-                }
             }
+            System.out.println("---> newArchive (size): "+ newArchive.size());
 
             // Remove other archs with ga=true, improves_hv=false as not improving
             Data deletionData = this.deleteNonImprovingArchitectures(this.datasetId);

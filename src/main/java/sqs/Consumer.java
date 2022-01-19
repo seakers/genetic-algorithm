@@ -230,6 +230,9 @@ public class Consumer implements Runnable {
                     else if(msgType.equals("start_bulk_ga")){
                         this.msgTypeStartGa(msgContents, "bulk");
                     }
+                    else if(msgType.equals("apply_feature")){
+                        this.msgTypeApplyFeature(msgContents);
+                    }
                     else if(msgType.equals("stop_ga")){
                         this.msgTypeStopGa(msgContents);
                     }
@@ -418,7 +421,7 @@ public class Consumer implements Runnable {
                 allowedTypes = Arrays.asList("connectionAck", "statusCheck", "reset");
                 break;
             case READY:
-                allowedTypes = Arrays.asList("start_ga", "start_bulk_ga", "stop_ga", "ping", "statusCheck", "reset", "exit");
+                allowedTypes = Arrays.asList("start_ga", "start_bulk_ga", "apply_feature", "stop_ga", "ping", "statusCheck", "reset", "exit");
                 break;
         }
         // Check for both allowedTypes and UUID match
@@ -554,7 +557,7 @@ public class Consumer implements Runnable {
     
     private void msgTypePing(Map<String, String> msgContents) {
         this.lastPingTime = System.currentTimeMillis();
-        this.privateQueue.add("ping");
+        this.privateQueue.add(("{ \"type\": \"ping\" }"));
         // Send ping ack back
         final Map<String, MessageAttributeValue> messageAttributes = new HashMap<>();
         messageAttributes.put("msgType",
@@ -644,7 +647,7 @@ public class Consumer implements Runnable {
         // RUN CONSUMER
         if (this.gaThread != null && this.gaThread.isAlive()) {
             try {
-                this.privateQueue.add("stop");
+                this.privateQueue.add("{ \"type\": \"stop\" }");
                 this.gaThread.join();
             }
             catch (InterruptedException e) {
@@ -656,11 +659,19 @@ public class Consumer implements Runnable {
         this.gaThread.start();
     }
 
+    private void msgTypeApplyFeature(Map<String, String> msgContents) {
+        System.out.println("---> APPLYING FEATURE");
+        
+        if (this.gaThread != null && this.gaThread.isAlive()) {
+            this.privateQueue.add("{ \"type\": \"exploreFeature\", \"feature\": \"" + msgContents.get("tested_feature") + "\" }");
+        }
+    }
+
     private int msgTypeStopGa(Map<String, String> msgContents) {
         System.out.println("---> STOPPING GA");
         
         if (this.gaThread != null && this.gaThread.isAlive()) {
-            this.privateQueue.add("stop");
+            this.privateQueue.add("{ \"type\": \"stop\" }");
             return 0;
         }
         

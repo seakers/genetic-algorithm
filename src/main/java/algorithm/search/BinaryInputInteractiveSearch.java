@@ -7,6 +7,8 @@ package algorithm.search;
 
 import java.util.ArrayList;
 import java.util.concurrent.ConcurrentLinkedQueue;
+
+import algorithm.search.operators.EitherVariation;
 import algorithm.thriftinterface.BinaryInputArchitecture;
 import software.amazon.awssdk.services.sqs.SqsClient;
 
@@ -23,8 +25,8 @@ import org.moeaframework.util.TypedProperties;
  */
 public class BinaryInputInteractiveSearch extends AbstractInteractiveSearch {
 
-    public BinaryInputInteractiveSearch(Algorithm alg, TypedProperties properties, ConcurrentLinkedQueue<String> privateQueue, SqsClient sqsClient, ApolloClient apollo, String userQueueUrl, int datasetId) {
-        super(alg, properties, privateQueue, sqsClient, apollo, userQueueUrl, datasetId);
+    public BinaryInputInteractiveSearch(Algorithm alg, TypedProperties properties, ConcurrentLinkedQueue<String> privateQueue, SqsClient sqsClient, ApolloClient apollo, String userQueueUrl, int datasetId, EitherVariation featureVariation) {
+        super(alg, properties, privateQueue, sqsClient, apollo, userQueueUrl, datasetId, featureVariation);
     }
 
     @Override

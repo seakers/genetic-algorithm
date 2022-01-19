@@ -14,7 +14,7 @@ import org.moeaframework.core.PRNG;
 import org.moeaframework.core.Solution;
 
 public class ApplyFeature implements Variation {
-    private final String feature;
+    private String feature;
     private final int numInstruments;
     private final int numOrbits;
 
@@ -33,6 +33,10 @@ public class ApplyFeature implements Variation {
 	 */
 	public int getArity() {
         return 1;
+    }
+
+    public void setFeature(String feature) {
+        this.feature = feature;
     }
 
 	/**
@@ -135,7 +139,7 @@ public class ApplyFeature implements Variation {
     }
 
     public void applyNumInstrumentsFeature(AssigningArchitecture solution, String instruments, Integer number) {
-        if (instruments.length() == 0) {
+        if (instruments == null || instruments.length() == 0) {
             //numOfInstruments[;;n]: Number of instruments in total
             boolean hasFeature = false;
             int count = 0;

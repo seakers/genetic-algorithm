@@ -36,6 +36,7 @@ import seakers.architecture.operators.IntegerUM;
 import software.amazon.awssdk.services.sqs.SqsClient;
 import software.amazon.awssdk.services.sqs.model.MessageAttributeValue;
 import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
+import software.amazon.awssdk.utils.Either;
 
 
 public class GAThread implements Runnable {
@@ -64,6 +65,7 @@ public class GAThread implements Runnable {
     private SqsClient sqs;
     private List<ArchitectureQuery.Item> initialPopulation;
     private ConcurrentLinkedQueue<String> privateQueue;
+    private EitherVariation eitherVariation;
 
     private Algorithm eMOEA;
 
@@ -292,16 +294,17 @@ public class GAThread implements Runnable {
         Variation bitFlip          = new BitFlip(mutationProbability);
         Variation integerMutation = new IntegerUM(mutationProbability);
         CompoundVariation var;
-        if (!this.testedFeature.equals("")) {
-            System.out.println("----> Adding hypothesis testing to GA!");
-            ApplyFeature applyFeature = new ApplyFeature(this.testedFeature, this.numInstruments, this.numOrbits);
-            EitherVariation eitherVar = new EitherVariation(singlecross, applyFeature, 0.3, 0.7);
-            var = new CompoundVariation(eitherVar, bitFlip, integerMutation);
+        ApplyFeature applyFeature = new ApplyFeature(this.testedFeature, this.numInstruments, this.numOrbits);
+        EitherVariation eitherVar = new EitherVariation(singlecross, applyFeature, 0.3, 0.7);
+        if (this.testedFeature.equals("")) {
+            eitherVar.setProbabilities(1.0, 0.0);
         }
         else {
-            var = new CompoundVariation(singlecross, bitFlip, integerMutation);
+            System.out.println("----> Adding hypothesis testing to GA!");
+            eitherVar.setProbabilities(0.3, 0.7);
         }
-        
+        this.eitherVariation = eitherVar;
+        var = new CompoundVariation(eitherVar, bitFlip, integerMutation);
 
         // BUILD: MOEA
         this.eMOEA = new EpsilonMOEA(assignmentProblem, population, archive, selection, var, initialization);
@@ -320,7 +323,7 @@ public class GAThread implements Runnable {
         // SUBMIT MOEA
         switch (this.runType) {
             case INTERACTIVE:
-                ecs.submit(new BinaryInputInteractiveSearch(this.eMOEA, this.properties, this.privateQueue, this.sqs, this.apollo, this.userResponseUrl, this.datasetId));
+                ecs.submit(new BinaryInputInteractiveSearch(this.eMOEA, this.properties, this.privateQueue, this.sqs, this.apollo, this.userResponseUrl, this.datasetId, this.eitherVariation));
                 break;
             case BULK:
                 ecs.submit(new BulkSearch(this.eMOEA, this.properties, this.privateQueue, this.sqs, this.apollo, this.userResponseUrl, this.datasetId, this.problemId, this.maxSeconds));

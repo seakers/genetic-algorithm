@@ -11,8 +11,8 @@ public class EitherVariation implements Variation {
     private final Variation var1;
     private final Variation var2;
 
-    private final double prob1;
-    private final double prob2;
+    private double prob1;
+    private double prob2;
 
     public EitherVariation(Variation var1, Variation var2, double prob1, double prob2) {
         this.var1 = var1;
@@ -53,5 +53,18 @@ public class EitherVariation implements Variation {
         else {
             return var2.evolve(Arrays.copyOfRange(parents, 0, var2.getArity()));
         }
+    }
+
+    public void setProbabilities(double prob1, double prob2) {
+        this.prob1 = prob1;
+        this.prob2 = prob2;
+    }
+
+    public Variation getVar1() {
+        return var1;
+    }
+
+    public Variation getVar2() {
+        return var2;
     }
 }
