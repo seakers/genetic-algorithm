@@ -268,6 +268,11 @@ public class Consumer implements Runnable {
         }
     }
     
+
+
+
+
+
     private boolean queueExists(String queueUrl) {
         ListQueuesResponse listResponse = this.sqsClient.listQueues();
         for (String url: listResponse.queueUrls()) {
@@ -439,6 +444,11 @@ public class Consumer implements Runnable {
     }
     
     
+
+
+
+
+
     // ---> MESSAGE TYPES
     private void msgTypeConnectionRequest(Map<String, String> msgContents) {
         String userId = msgContents.get("user_id");
@@ -584,6 +594,11 @@ public class Consumer implements Runnable {
         this.pendingReset = true;
     }
 
+
+
+
+
+
     // ---> ALGORITHMS
     private void msgTypeStartGa(Map<String, String> msgContents, String runType) {  
         String maxEvals  = msgContents.get("maxEvals");
@@ -677,6 +692,11 @@ public class Consumer implements Runnable {
         
         return 1;
     }
+
+
+
+
+
 
     // ---> MESSAGE FLOW
     // 1.
