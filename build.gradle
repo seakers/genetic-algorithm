@@ -18,6 +18,7 @@ dependencies {
     implementation platform('software.amazon.awssdk:bom:2.13.13')
     implementation 'software.amazon.awssdk:sqs'
     implementation 'software.amazon.awssdk:ecs'
+    implementation 'software.amazon.awssdk:ec2'
     implementation 'software.amazon.awssdk:regions'
     implementation 'software.amazon.awssdk:auth'
 

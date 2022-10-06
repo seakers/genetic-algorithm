@@ -1,0 +1,27 @@
+########################
+### Build Containers ###
+########################
+
+# Download and install dependencies not available on maven
+FROM maven:3-jdk-11-slim AS BUILD_TOOL
+WORKDIR /repos
+RUN apt-get update -y
+RUN apt-get upgrade -y
+RUN apt-get install git -y
+RUN git clone https://github.com/seakers/SystemArchitectureProblems.git
+
+## 1. SystemArchitectureProblems ##
+WORKDIR /repos/SystemArchitectureProblems
+RUN git fetch && git checkout jdk-11
+RUN mvn install
+
+
+
+#######################
+### Final Container ###
+#######################
+#FROM amazoncorretto:11-alpine
+FROM amazoncorretto:11
+COPY --from=BUILD_TOOL /root/.m2 /root/.m2
+
+WORKDIR /app

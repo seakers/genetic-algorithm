@@ -1,0 +1,36 @@
+version: '3.7'
+services:
+  algorithm:
+    build:
+      dockerfile: DockerfileCompose
+      context: .
+    image: apazagab/genetic-algorithm:latest
+    environment:
+      # --> Config
+      - REGION=${REGION}
+      - EVAL_REQUEST_URL=${EVAL_REQUEST_URL}
+      - EVAL_RESPONSE_URL=${EVAL_RESPONSE_URL}
+      - APOLLO_URL=${APOLLO_URL}
+      - APOLLO_URL_WS=${APOLLO_URL_WS}
+      - PING_REQUEST_URL=${PING_REQUEST_URL}
+      - PING_RESPONSE_URL=${PING_RESPONSE_URL}
+      - PRIVATE_REQUEST_URL=${PRIVATE_REQUEST_URL}
+      - PRIVATE_RESPONSE_URL=${PRIVATE_RESPONSE_URL}
+      - DEPLOYMENT_TYPE=${DEPLOYMENT_TYPE}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - MESSAGE_RETRIEVAL_SIZE=${MESSAGE_RETRIEVAL_SIZE}
+      - MESSAGE_QUERY_TIMEOUT=${MESSAGE_QUERY_TIMEOUT}
+      - USER_ID=${USER_ID}
+      # - JAVA_OPTS=${JAVA_OPTS}
+    volumes:
+      - type: bind
+        source: .
+        target: /app
+    tty: true
+    container_name: algorithm
+    command: bash
+networks:
+  default:
+    name: daphne-network
+    external: true

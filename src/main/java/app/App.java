@@ -13,6 +13,7 @@ package app;
 //                                                 |___/
 
 
+import software.amazon.awssdk.services.ec2.Ec2Client;
 import sqs.Consumer;
 import software.amazon.awssdk.services.ecs.EcsClient;
 import software.amazon.awssdk.services.sqs.SqsClient;
@@ -35,39 +36,17 @@ public class App {
 // |_____|_| \_|_____|  |_|
 //
 
-
         boolean debug                = Boolean.parseBoolean(System.getenv("DEBUG"));
-        String  requestUrl           = System.getenv("GA_REQUEST_URL");
-        String  responseUrl          = System.getenv("GA_RESPONSE_URL");
-        String  awsStackEndpoint     = System.getenv("AWS_STACK_ENDPOINT");
-        String  regionName           = System.getenv("REGION");
-        String  apolloUrl            = System.getenv("APOLLO_URL");
-        int     messageRetrievalSize = Integer.parseInt(System.getenv("MESSAGE_RETRIEVAL_SIZE"));
-        int     messageQueryTimeout  = Integer.parseInt(System.getenv("MESSAGE_QUERY_TIMEOUT"));
 
-
-        Region region;
-        if(regionName.equals("US_EAST_1")){
-            region = Region.US_EAST_1;
-        }
-        else if(regionName.equals("US_EAST_2")){
-            region = Region.US_EAST_2;
-        }
-        else{
-            region = Region.US_EAST_2;
-        }
 
         System.out.println("\n------------------ ALGORITHM INIT ------------------");
-        System.out.println("----------> REQUEST QUEUE URL: " + requestUrl);
-        System.out.println("-----------> RESPONSE QUEUE URL: " + responseUrl);
-        System.out.println("---------------> HASURA URL: " + apolloUrl);
-        System.out.println("---------> AWS ENDPOINT URL: " + awsStackEndpoint);
-        System.out.println("-------------------> REGION: " + regionName);
-        System.out.println("---> MESSAGE RETRIEVAL SIZE: " + messageRetrievalSize);
-        System.out.println("----> MESSAGE QUERY TIMEOUT: " + messageQueryTimeout);
-        System.out.println("--------------------> DEBUG: " + debug);
+        System.out.println("------> PING REQUEST QUEUE: " + System.getenv("PING_REQUEST_URL"));
+        System.out.println("-----> PING RESPONSE QUEUE: " + System.getenv("PING_RESPONSE_URL"));
+        System.out.println("------> PRIV REQUEST QUEUE: " + System.getenv("PRIVATE_REQUEST_URL"));
+        System.out.println("-----> PRIV RESPONSE QUEUE: " + System.getenv("PRIVATE_RESPONSE_URL"));
+        System.out.println("--------------> HASURA URL: " + System.getenv("APOLLO_URL"));
+        System.out.println("-------------------> DEBUG: " + debug);
         System.out.println("-------------------------------------------------------\n");
-
 
 
 //  _           _ _     _
@@ -79,31 +58,18 @@ public class App {
 //
 
 
-        SqsClientBuilder sqsClientBuilder = SqsClient.builder()
-                                                     .region(region);
-        if (awsStackEndpoint != null) {
-            sqsClientBuilder.endpointOverride(URI.create(awsStackEndpoint));
-        }
+        // --> SQS Client
+        SqsClientBuilder sqsClientBuilder = SqsClient.builder().region(Region.US_EAST_2);
         final SqsClient sqsClient = sqsClientBuilder.build();
 
-        EcsClient ecsClient = null;
-        if (System.getenv("DEPLOYMENT_TYPE").equals("AWS")) {
-            ecsClient = EcsClient.builder()
-                            .region(Region.US_EAST_2)
-                            .build();
-        }
-
+        // --> EC2 Client
+        Ec2Client ec2Client = Ec2Client.builder()
+                .region(Region.US_EAST_2)
+                .build();
 
         Consumer consumer = new Consumer.Builder(sqsClient)
-                                        .setECSClient(ecsClient)
-                                        .setAwsStackEndpoint(awsStackEndpoint)
-                                        .setRegion(region)
+                                        .setEC2Client(ec2Client)
                                         .debug(debug)
-                                        .setMessageQueryTimeout(messageQueryTimeout)
-                                        .setMessageRetrievalSize(messageRetrievalSize)
-                                        .setRequestQueueUrl(requestUrl)
-                                        .setResponseQueueUrl(responseUrl)
-                                        .setApolloUrl(apolloUrl)
                                         .build();
 
         consumer.run();

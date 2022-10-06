@@ -1,0 +1,30 @@
+{
+  "MessageBody": "test",
+  "DelaySeconds": 0,
+  "MessageAttributes": {
+    "msgType": {
+      "DataType": "String",
+      "StringValue": "evaluate"
+    },
+    "input": {
+      "DataType": "String",
+      "StringValue": "0000000100000000000000000"
+    },
+    "dataset_id": {
+      "DataType": "String",
+      "StringValue": "1"
+    },
+    "ga": {
+      "DataType": "String",
+      "StringValue": "false"
+    },
+    "redo": {
+      "DataType": "String",
+      "StringValue": "false"
+    },
+    "fast": {
+      "DataType": "String",
+      "StringValue": "false"
+    }
+  }
+}
