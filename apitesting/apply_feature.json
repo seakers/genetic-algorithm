@@ -1,0 +1,14 @@
+{
+  "MessageBody": "test",
+  "DelaySeconds": 0,
+  "MessageAttributes": {
+    "msgType": {
+      "DataType": "String",
+      "StringValue": "apply_feature"
+    },
+    "tested_feature": {
+      "DataType": "String",
+      "StringValue": "0000011111000001111100000"
+    }
+  }
+}

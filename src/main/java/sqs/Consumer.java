@@ -4,8 +4,11 @@ import algorithm.GAThread;
 import algorithm.GAThread.RunType;
 
 import com.apollographql.apollo.ApolloClient;
+import okhttp3.Interceptor;
 import okhttp3.OkHttpClient;
 
+import okhttp3.Request;
+import org.jetbrains.annotations.NotNull;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 import software.amazon.awssdk.services.ec2.Ec2Client;
@@ -38,6 +41,7 @@ import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
 import software.amazon.awssdk.services.sqs.model.SetQueueAttributesRequest;
 import software.amazon.awssdk.regions.Region;
 
+import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
@@ -67,8 +71,6 @@ public class Consumer implements Runnable {
     private String privateRequestUrl = System.getenv("PRIVATE_REQUEST_URL");
     private String privateResponseUrl = System.getenv("PRIVATE_RESPONSE_URL");
     private String    apolloUrl = System.getenv("APOLLO_URL");
-    private int       messageRetrievalSize = Integer.parseInt(System.getenv("MESSAGE_RETRIEVAL_SIZE"));
-    private int       messageQueryTimeout = Integer.parseInt(System.getenv("MESSAGE_QUERY_TIMEOUT"));
     private Thread    gaThread;
     private ConcurrentLinkedQueue<String> privateQueue;
     private State     currentState = State.READY;
@@ -79,11 +81,6 @@ public class Consumer implements Runnable {
     private ConcurrentLinkedQueue<Map<String, String>> pingConsumerQueueResponse;
     private PingConsumer                               pingConsumer;
     private Thread                                     pingThread = null;
-
-
-
-
-
 
 
     
@@ -306,6 +303,7 @@ public class Consumer implements Runnable {
     }
 
     private void sendReadyStatus(){
+        this.currentState = State.READY;
         Map<String, String> status_message = new HashMap<>();
         status_message.put("STATUS", "READY");
         status_message.put("PROBLEM_ID", "-----");
@@ -378,13 +376,12 @@ public class Consumer implements Runnable {
         String maxEvals  = msgContents.get("maxEvals");
         String crossoverProbability  = msgContents.get("crossoverProbability");
         String mutationProbability   = msgContents.get("mutationProbability");
-        String algorithmUrl          = msgContents.get("algorithmUrl");
         int groupId  = Integer.parseInt(msgContents.get("group_id"));
         int problemId  = Integer.parseInt(msgContents.get("problem_id"));
         int datasetId  = Integer.parseInt(msgContents.get("dataset_id"));
         String testedFeature = msgContents.getOrDefault("tested_feature", "");
         int maxSeconds = Integer.parseInt(msgContents.getOrDefault("max_seconds", "0"));
-        
+
         System.out.println("\n-------------------- ALGORITHM REQUEST --------------------");
         System.out.println("---------------> MAX EVALS: " + maxEvals);
         System.out.println("---> CROSSOVER PROBABILITY: " + crossoverProbability);
@@ -400,7 +397,25 @@ public class Consumer implements Runnable {
 
         this.sendRunningStatus(groupId, problemId);
         
-        OkHttpClient http   = new OkHttpClient.Builder().connectTimeout(600, TimeUnit.SECONDS).readTimeout(600, TimeUnit.SECONDS).writeTimeout(600, TimeUnit.SECONDS).callTimeout(600, TimeUnit.SECONDS).build();
+        OkHttpClient http   = new OkHttpClient.Builder()
+                .connectTimeout(600, TimeUnit.SECONDS)
+                .readTimeout(600, TimeUnit.SECONDS)
+                .writeTimeout(600, TimeUnit.SECONDS)
+                .callTimeout(600, TimeUnit.SECONDS)
+                .addInterceptor(new Interceptor() {
+                    @NotNull
+                    @Override
+                    public okhttp3.Response intercept(@NotNull Interceptor.Chain chain) throws IOException {
+                        Request original = chain.request();
+                        Request request = original.newBuilder()
+                                .header("X-Hasura-Admin-Secret", "daphne")
+                                .method(original.method(), original.body())
+                                .build();
+
+                        return chain.proceed(request);
+                    }
+                })
+                .build();
         ApolloClient apollo = ApolloClient.builder().serverUrl(this.apolloUrl).okHttpClient(http).build();
         
         SqsClientBuilder sqsClientBuilder = SqsClient.builder().region(Region.US_EAST_2);
@@ -414,7 +429,7 @@ public class Consumer implements Runnable {
             gaRunType = RunType.BULK;
         }
         
-        GAThread process = new GAThread.Builder(algorithmUrl, this.vassarRequestQueueUrl)
+        GAThread process = new GAThread.Builder(this.privateResponseUrl, this.vassarRequestQueueUrl)
                 .setSqsClient(sqsClient)
                 .setGroupId(groupId)
                 .setProblemId(problemId)
@@ -425,6 +440,7 @@ public class Consumer implements Runnable {
                 .setCrossoverProbability(Double.parseDouble(crossoverProbability))
                 .setMutationProbability(Double.parseDouble(mutationProbability))
                 .setRunType(gaRunType)
+                .setPingConsumerQueue(this.pingConsumerQueue)
                 .setTestedFeature(testedFeature)
                 .setPrivateQueue(this.privateQueue)
                 .getProblemData(problemId, datasetId)
@@ -456,14 +472,12 @@ public class Consumer implements Runnable {
 
     private int msgTypeStopGa(Map<String, String> msgContents) {
         System.out.println("---> STOPPING GA");
-        
+
         if (this.gaThread != null && this.gaThread.isAlive()) {
             this.privateQueue.add("{ \"type\": \"stop\" }");
+            this.currentState = State.READY;
             return 0;
         }
-
-        this.sendReadyStatus();
-        
         return 1;
     }
 

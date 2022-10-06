@@ -65,8 +65,8 @@ public class GAThread implements Runnable {
     private SqsClient sqs;
     private List<ArchitectureQuery.Item> initialPopulation;
     private ConcurrentLinkedQueue<String> privateQueue;
+    private ConcurrentLinkedQueue<Map<String, String>> pingConsumerQueue;
     private EitherVariation eitherVariation;
-
     private Algorithm eMOEA;
 
 
@@ -90,6 +90,7 @@ public class GAThread implements Runnable {
         private SqsClient sqs;
         private List<ArchitectureQuery.Item> initialPopulation;
         private ConcurrentLinkedQueue<String> privateQueue;
+        private ConcurrentLinkedQueue<Map<String, String>> pingConsumerQueue;
 
         public Builder(String userResponseUrl, String vassarQueueUrl) {
             this.userResponseUrl = userResponseUrl;
@@ -156,6 +157,11 @@ public class GAThread implements Runnable {
             return this;
         }
 
+        public Builder setPingConsumerQueue(ConcurrentLinkedQueue<Map<String, String>> pingConsumerQueue) {
+            this.pingConsumerQueue = pingConsumerQueue;
+            return this;
+        }
+
         private List<ArchitectureQuery.Item> getInitialPopulation(int problemId, int datasetId) {
             ArchitectureQuery architectureQuery = ArchitectureQuery.builder()
                     .problem_id(problemId)
@@ -218,6 +224,7 @@ public class GAThread implements Runnable {
             build.sqs = this.sqs;
             build.initialPopulation = this.initialPopulation;
             build.privateQueue = this.privateQueue;
+            build.pingConsumerQueue = this.pingConsumerQueue;
 
             build.properties = new TypedProperties();
             build.properties.setInt("maxEvaluations", this.maxEvals);
@@ -320,7 +327,7 @@ public class GAThread implements Runnable {
         ExecutorService              pool = Executors.newFixedThreadPool(1);
         CompletionService<Algorithm> ecs  = new ExecutorCompletionService<>(pool);
 
-        // SUBMIT MOEA
+        // --> 1. Submit MOEA
         switch (this.runType) {
             case INTERACTIVE:
                 ecs.submit(new BinaryInputInteractiveSearch(this.eMOEA, this.properties, this.privateQueue, this.sqs, this.apollo, this.userResponseUrl, this.datasetId, this.eitherVariation));
@@ -332,6 +339,8 @@ public class GAThread implements Runnable {
                 System.out.println("Run type not supported!");
         }
 
+
+        // --> 2. Let backend know GA started
         final Map<String, MessageAttributeValue> messageAttributes = new HashMap<>();
         messageAttributes.put("msgType",
                 MessageAttributeValue.builder()
@@ -346,12 +355,16 @@ public class GAThread implements Runnable {
                 .delaySeconds(0)
                 .build());
 
+
+        // --> 3. Try to finish GA
         try {
             Algorithm alg = ecs.take().get();
         } catch (InterruptedException | ExecutionException ex) {
             ex.printStackTrace();
         }
 
+
+        // --> 4. Let backend know GA finished
         final Map<String, MessageAttributeValue> messageAttributes2 = new HashMap<>();
         messageAttributes2.put("msgType",
                 MessageAttributeValue.builder()
@@ -367,8 +380,15 @@ public class GAThread implements Runnable {
                 .build());
 
         pool.shutdown();
-
         System.out.println("DONE");
+
+        // --> 5. Let Ping Consumer know GA finished
+        Map<String, String> status_message = new HashMap<>();
+        status_message.put("STATUS", "READY");
+        status_message.put("PROBLEM_ID", "-----");
+        status_message.put("GROUP_ID", "-----");
+        status_message.put("DATASET_ID", "-----");
+        this.pingConsumerQueue.add(status_message);
     }
 
 

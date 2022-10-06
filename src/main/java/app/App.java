@@ -36,7 +36,7 @@ public class App {
 // |_____|_| \_|_____|  |_|
 //
 
-        boolean debug                = Boolean.parseBoolean(System.getenv("DEBUG"));
+        boolean debug = Boolean.parseBoolean(System.getenv("DEBUG"));
 
 
         System.out.println("\n------------------ ALGORITHM INIT ------------------");

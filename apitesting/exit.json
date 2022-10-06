@@ -1,0 +1,10 @@
+{
+  "MessageBody": "test",
+  "DelaySeconds": 0,
+  "MessageAttributes": {
+    "msgType": {
+      "DataType": "String",
+      "StringValue": "exit"
+    }
+  }
+}

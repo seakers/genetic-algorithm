@@ -1,6 +1,6 @@
 # --> SQS Aliases
-sqsMsg PRIVATE_REQUEST_URL connect.json
-sqsMsg EVAL_REQUEST_URL arch.json
+./apitest PRIVATE_REQUEST_URL start_ga.json
+./apitest PRIVATE_REQUEST_URL stop_ga.json
 pqueues
 
 

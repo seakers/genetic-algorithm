@@ -1,0 +1,34 @@
+{
+  "MessageBody": "test",
+  "DelaySeconds": 0,
+  "MessageAttributes": {
+    "msgType": {
+      "DataType": "String",
+      "StringValue": "start_ga"
+    },
+    "maxEvals": {
+      "DataType": "String",
+      "StringValue": "3000"
+    },
+    "crossoverProbability": {
+      "DataType": "String",
+      "StringValue": "1"
+    },
+    "mutationProbability": {
+      "DataType": "String",
+      "StringValue": "0.016666"
+    },
+    "group_id": {
+      "DataType": "String",
+      "StringValue": "1"
+    },
+    "problem_id": {
+      "DataType": "String",
+      "StringValue": "1"
+    },
+    "dataset_id": {
+      "DataType": "String",
+      "StringValue": "133"
+    }
+  }
+}
