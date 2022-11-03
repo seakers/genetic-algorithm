@@ -1,6 +1,9 @@
 package sqs;
 
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonObject;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.sqs.SqsClient;
 import software.amazon.awssdk.services.sqs.SqsClientBuilder;
@@ -18,6 +21,7 @@ public class PingConsumer implements Runnable {
     private String awsStackEndpoint;
     private SqsClient sqs_client;
     private long lastPingTime;
+    public Gson gson = new Gson();
 
 
     // --> AWS Evaluator Ping Queues: Brain <--> Evaluator
@@ -28,11 +32,7 @@ public class PingConsumer implements Runnable {
     private ConcurrentLinkedQueue<Map<String, String>> mainConsumerQueue;
     private ConcurrentLinkedQueue<Map<String, String>> mainConsumerQueueResponse;
 
-    // --> Evaluator Status
-    private String internal_status = "-----";
-    private String internal_problem_id = "-----";
-    private String internal_group_id = "-----";
-    private String internal_dataset_id = "-----";
+    private Map<String, String> statusStore;
 
 
     public PingConsumer(ConcurrentLinkedQueue<Map<String, String>> mainConsumerQueue, ConcurrentLinkedQueue<Map<String, String>> mainConsumerQueueResponse) {
@@ -41,6 +41,7 @@ public class PingConsumer implements Runnable {
         this.awsStackEndpoint = System.getenv("AWS_STACK_ENDPOINT");
         this.sqs_client = this.newClient();
         this.lastPingTime = System.currentTimeMillis();
+        this.statusStore = new HashMap<>();
     }
 
     public SqsClient newClient() {
@@ -103,19 +104,23 @@ public class PingConsumer implements Runnable {
         if(!this.mainConsumerQueue.isEmpty()) {
             Map<String, String> msgContents = this.mainConsumerQueue.poll();
 
-            // --> STOP CONDITION
-            if(msgContents.containsKey("msgType")){
-                if(msgContents.get("msgType").equals("stop")){
+            // --> CONTAINER STOP CONDITION
+            if(msgContents.containsKey("controller")){
+                if (msgContents.get("controller").equals("exit")){
                     return false;
                 }
             }
 
-            // --> NEW STATUS CONDITION
-            if(msgContents.containsKey("STATUS")){
-                this.internal_status = msgContents.get("STATUS");
-                this.internal_problem_id = msgContents.get("PROBLEM_ID");
-                this.internal_group_id = msgContents.get("GROUP_ID");
-                this.internal_dataset_id = msgContents.get("DATASET_ID");
+            // --> GA STOP CONDITION
+            for(String key: msgContents.keySet()){
+                if(msgContents.get(key).equals("exit")){
+                    this.statusStore.remove(key);
+                }
+            }
+
+            // --> UPDATE STATUS STORE
+            for(String key: msgContents.keySet()){
+                this.statusStore.put(key, msgContents.get(key));
             }
         }
         return true;
@@ -188,36 +193,20 @@ public class PingConsumer implements Runnable {
         messageAttributes.put("msgType",
                 MessageAttributeValue.builder()
                         .dataType("String")
-                        .stringValue("statusAck")
+                        .stringValue("pingAck")
                         .build()
         );
-        messageAttributes.put("status",
-                MessageAttributeValue.builder()
-                        .dataType("String")
-                        .stringValue(this.internal_status)
-                        .build()
-        );
-        messageAttributes.put("PROBLEM_ID",
-                MessageAttributeValue.builder()
-                        .dataType("String")
-                        .stringValue(this.internal_problem_id)
-                        .build()
-        );
-        messageAttributes.put("GROUP_ID",
-                MessageAttributeValue.builder()
-                        .dataType("String")
-                        .stringValue(this.internal_group_id)
-                        .build()
-        );
-        messageAttributes.put("DATASET_ID",
-                MessageAttributeValue.builder()
-                        .dataType("String")
-                        .stringValue(this.internal_dataset_id)
-                        .build()
-        );
+        for(String key: this.statusStore.keySet()){
+            messageAttributes.put(key,
+                    MessageAttributeValue.builder()
+                            .dataType("String")
+                            .stringValue(this.gson.toJson(this.statusStore.get(key)))
+                            .build()
+            );
+        }
         this.sqs_client.sendMessage(SendMessageRequest.builder()
                 .queueUrl(this.pingResponseQueue)
-                .messageBody("ping_ack")
+                .messageBody("pingAck")
                 .messageAttributes(messageAttributes)
                 .delaySeconds(0)
                 .build());

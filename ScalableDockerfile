@@ -69,10 +69,10 @@ RUN wget https://services.gradle.org/distributions/gradle-6.0-bin.zip && \
 ENV PATH="/installs/gradle-6.0/bin:${PATH}"
 
 
-COPY /. /app/genetic-algorithm
+COPY /. /app/comet-algorithm
 
 
-WORKDIR /app/genetic-algorithm
+WORKDIR /app/comet-algorithm
 # RUN gradle generateApolloSources
 CMD gradle run
 

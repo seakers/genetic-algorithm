@@ -31,7 +31,7 @@ RUN ./gradlew installDist
 #######################
 #FROM amazoncorretto:11-alpine
 FROM amazoncorretto:11
-COPY --from=BUILD_TOOL /app/build/install/genetic-algorithm /app/genetic-algorithm
+COPY --from=BUILD_TOOL /app/build/install/comet-algorithm /app/comet-algorithm
 
 RUN yum install -y procps htop top free
 

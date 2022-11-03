@@ -3,24 +3,25 @@
 ./apitest PRIVATE_REQUEST_URL stop_ga.json
 pqueues
 
-
+sqsMsg PRIVATE_REQUEST_URL start_ga.json
+sqsMsg PRIVATE_REQUEST_URL stop_ga.json
 
 
 # --> AWS Registry Login
 sudo aws ecr get-login-password --region us-east-2 | docker login --username AWS --password-stdin 923405430231.dkr.ecr.us-east-2.amazonaws.com
 
 # --> Build / Deploy
-docker build -f DockerfileDev -t 923405430231.dkr.ecr.us-east-2.amazonaws.com/genetic-algorithm:latest .
-docker build -f DockerfileProd -t 923405430231.dkr.ecr.us-east-2.amazonaws.com/genetic-algorithm:latest .
+docker build -f DockerfileDev -t 923405430231.dkr.ecr.us-east-2.amazonaws.com/comet-algorithm:latest .
+docker build -f DockerfileProd -t 923405430231.dkr.ecr.us-east-2.amazonaws.com/comet-algorithm:latest .
 
 
-docker push 923405430231.dkr.ecr.us-east-2.amazonaws.com/genetic-algorithm:latest
+docker push 923405430231.dkr.ecr.us-east-2.amazonaws.com/comet-algorithm:latest
 
 
-docker run -it -d --entrypoint=/bin/bash --network=daphne-network --name=evaluator 923405430231.dkr.ecr.us-east-2.amazonaws.com/genetic-algorithm:latest
-docker run --network=daphne-network --name=evaluator 923405430231.dkr.ecr.us-east-2.amazonaws.com/genetic-algorithm:latest
+docker run -it -d --entrypoint=/bin/bash --network=daphne-network --name=evaluator 923405430231.dkr.ecr.us-east-2.amazonaws.com/comet-algorithm:latest
+docker run --network=daphne-network --name=evaluator 923405430231.dkr.ecr.us-east-2.amazonaws.com/comet-algorithm:latest
 
-docker run --name=evaluator 923405430231.dkr.ecr.us-east-2.amazonaws.com/genetic-algorithm:latest
+docker run --name=evaluator 923405430231.dkr.ecr.us-east-2.amazonaws.com/comet-algorithm:latest
 
 
 

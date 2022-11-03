@@ -4,7 +4,7 @@ services:
     build:
       dockerfile: DockerfileCompose
       context: .
-    image: apazagab/genetic-algorithm:latest
+    image: apazagab/comet-algorithm:latest
     environment:
       # --> Config
       - REGION=${REGION}
@@ -28,9 +28,9 @@ services:
         source: .
         target: /app
     tty: true
-    container_name: algorithm
+    container_name: comet-algorithm
     command: bash
 networks:
   default:
-    name: daphne-network
+    name: comet-network
     external: true

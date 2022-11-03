@@ -32,7 +32,7 @@ RUN ./gradlew installDist
 
 # - Environment variables are passed in the AWS Fargate task definition
 FROM amazoncorretto:11
-COPY --from=BUILD_TOOL /app/build/install/genetic-algorithm /app/genetic-algorithm
+COPY --from=BUILD_TOOL /app/build/install/comet-algorithm /app/comet-algorithm
 
 # Debug stuff
 RUN yum install -y procps htop top free

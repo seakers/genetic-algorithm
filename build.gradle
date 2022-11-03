@@ -62,7 +62,7 @@ application {
 }
 
 apollo {
-    service("genetic-algorithm"){
+    service("comet-algorithm"){
         introspection {
             endpointUrl = "http://52.15.172.32:8080/v1/graphql"
         }

@@ -45,7 +45,6 @@ RUN yum update -y && \
     yum upgrade -y && \
     yum install git wget unzip tar -y
 
-# COPY /Users/gabeapaza/repositories/seakers/daphne/codebase/genetic-algorithm /app/genetic-algorithm
 
 # -- GRAPHQL SCHEMA --
 WORKDIR /app

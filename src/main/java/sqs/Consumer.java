@@ -1,60 +1,33 @@
 package sqs;
 
-import algorithm.GAThread;
-import algorithm.GAThread.RunType;
 
-import com.apollographql.apollo.ApolloClient;
-import okhttp3.Interceptor;
-import okhttp3.OkHttpClient;
+import algorithm.CometGA;
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import database.DatabaseAPI;
 
-import okhttp3.Request;
-import org.jetbrains.annotations.NotNull;
-import org.json.simple.JSONObject;
-import org.json.simple.parser.JSONParser;
+
 import software.amazon.awssdk.services.ec2.Ec2Client;
 import software.amazon.awssdk.services.ec2.model.*;
-import software.amazon.awssdk.services.ecs.EcsClient;
-import software.amazon.awssdk.services.ecs.model.DescribeServicesRequest;
-import software.amazon.awssdk.services.ecs.model.DescribeServicesResponse;
-import software.amazon.awssdk.services.ecs.model.Service;
-import software.amazon.awssdk.services.ecs.model.StopTaskRequest;
-import software.amazon.awssdk.services.ecs.model.StopTaskResponse;
-import software.amazon.awssdk.services.ecs.model.UpdateServiceRequest;
-import software.amazon.awssdk.services.ecs.model.UpdateServiceResponse;
 import software.amazon.awssdk.services.sqs.SqsClient;
-import software.amazon.awssdk.services.sqs.SqsClientBuilder;
 import software.amazon.awssdk.services.sqs.model.ChangeMessageVisibilityRequest;
-import software.amazon.awssdk.services.sqs.model.CreateQueueRequest;
-import software.amazon.awssdk.services.sqs.model.CreateQueueResponse;
 import software.amazon.awssdk.services.sqs.model.DeleteMessageRequest;
-import software.amazon.awssdk.services.sqs.model.GetQueueAttributesRequest;
-import software.amazon.awssdk.services.sqs.model.GetQueueAttributesResponse;
-import software.amazon.awssdk.services.sqs.model.GetQueueUrlRequest;
-import software.amazon.awssdk.services.sqs.model.GetQueueUrlResponse;
-import software.amazon.awssdk.services.sqs.model.ListQueuesResponse;
 import software.amazon.awssdk.services.sqs.model.Message;
 import software.amazon.awssdk.services.sqs.model.MessageAttributeValue;
 import software.amazon.awssdk.services.sqs.model.MessageSystemAttributeName;
 import software.amazon.awssdk.services.sqs.model.QueueAttributeName;
 import software.amazon.awssdk.services.sqs.model.ReceiveMessageRequest;
 import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
-import software.amazon.awssdk.services.sqs.model.SetQueueAttributesRequest;
-import software.amazon.awssdk.regions.Region;
 
-import java.io.IOException;
-import java.net.HttpURLConnection;
-import java.net.URI;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Scanner;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.TimeUnit;
+
+
 
 public class Consumer implements Runnable {
     
@@ -62,19 +35,15 @@ public class Consumer implements Runnable {
         READY, RUNNING
     }
 
-    private boolean   debug;
+    private Gson gson = new Gson();
     private boolean   running;
     private SqsClient sqsClient;
     private Ec2Client ec2Client;
-
-    private String vassarRequestQueueUrl = System.getenv("EVAL_REQUEST_URL");
     private String privateRequestUrl = System.getenv("PRIVATE_REQUEST_URL");
     private String privateResponseUrl = System.getenv("PRIVATE_RESPONSE_URL");
-    private String    apolloUrl = System.getenv("APOLLO_URL");
-    private Thread    gaThread;
-    private ConcurrentLinkedQueue<String> privateQueue;
+    private HashMap<String, Thread> gaThreadPool;
+    private HashMap<String, ConcurrentLinkedQueue<String>> privateQueuePool;
     private State     currentState = State.READY;
-
 
     // --> PING
     private ConcurrentLinkedQueue<Map<String, String>> pingConsumerQueue;
@@ -107,17 +76,17 @@ public class Consumer implements Runnable {
         public Consumer build(){
             Consumer build = new Consumer();
             
-            build.sqsClient      = this.sqsClient;
-            build.debug            = this.debug;
-            build.running              = true;
+            build.sqsClient = this.sqsClient;
+            build.running = true;
             build.ec2Client = this.ec2Client;
-            build.privateQueue = new ConcurrentLinkedQueue<String>();
+            build.privateQueuePool = new HashMap<>();
 
             // --> PING
             build.pingConsumerQueue         = new ConcurrentLinkedQueue<>();
             build.pingConsumerQueueResponse = new ConcurrentLinkedQueue<>();
             build.pingConsumer = new PingConsumer(build.pingConsumerQueue, build.pingConsumerQueueResponse);
             build.pingThread   = null;
+            build.gaThreadPool = new HashMap<>();
             
             return build;
         }
@@ -156,13 +125,7 @@ public class Consumer implements Runnable {
                 if (msgContents.containsKey("msgType")) {
                     String msgType = msgContents.get("msgType");
                     if(msgType.equals("start_ga")){
-                        this.msgTypeStartGa(msgContents, "interactive");
-                    }
-                    else if(msgType.equals("start_bulk_ga")){
-                        this.msgTypeStartGa(msgContents, "bulk");
-                    }
-                    else if(msgType.equals("apply_feature")){
-                        this.msgTypeApplyFeature(msgContents);
+                        this.msgTypeStartGa(msgContents);
                     }
                     else if(msgType.equals("stop_ga")){
                         this.msgTypeStopGa(msgContents);
@@ -178,97 +141,7 @@ public class Consumer implements Runnable {
             }
 
             counter++;
-//            List<Map<String, String>> messagesContents = new ArrayList<>();
-            
-            // Check if timers are expired for different states
-//            this.checkTimers();
-            
-            // CHECK CONNECTION QUEUE
-//            List<Message> messages = new ArrayList<>();
-//            List<Message> connectionMessages = new ArrayList<>();
-//            List<Message> userMessages = new ArrayList<>();
-//            if (this.currentState == State.WAITING_FOR_USER) {
-//                connectionMessages = this.getMessages(this.requestQueueUrl, 1, 1);
-//                connectionMessages = this.handleMessages(this.requestQueueUrl, connectionMessages);
-//                messages.addAll(connectionMessages);
-//            }
-            
-            // CHECK USER QUEUE
-//            if (this.currentState == State.WAITING_FOR_ACK || this.currentState == State.READY) {
-//                if (this.userRequestQueueUrl != null) {
-//                    userMessages = this.getMessages(this.userRequestQueueUrl, 5, 1);
-//                    userMessages = this.handleMessages(this.userRequestQueueUrl, userMessages);
-//                    messages.addAll(userMessages);
-//                }
-//            }
-
-            // COMBINE QUEUE MESSAGES
-//            for (Message msg: messages) {
-//                HashMap<String, String> msgContents = this.processMessage(msg, true);
-//                messagesContents.add(msgContents);
-//            }
-            
-//            for (Map<String, String> msgContents: messagesContents) {
-//                System.out.println(msgContents);
-//
-//                // "start_ga", "start_bulk_ga", "apply_feature", "stop_ga", "ping", "statusCheck", "reset", "exit"
-//
-//                if(msgContents.containsKey("msgType")){
-//                    String msgType = msgContents.get("msgType");
-////                    if (msgType.equals("connectionRequest")) {
-////                        this.msgTypeConnectionRequest(msgContents);
-////                    }
-////                    else if (msgType.equals("connectionAck")) {
-////                        this.msgTypeConnectionAck(msgContents);
-////                    }
-////                    else if (msgType.equals("statusCheck")) {
-////                        this.msgTypeStatusCheck(msgContents);
-////                    }
-//                    if(msgType.equals("start_ga")){
-//                        this.msgTypeStartGa(msgContents, "interactive");
-//                    }
-//                    else if(msgType.equals("start_bulk_ga")){
-//                        this.msgTypeStartGa(msgContents, "bulk");
-//                    }
-//                    else if(msgType.equals("apply_feature")){
-//                        this.msgTypeApplyFeature(msgContents);
-//                    }
-//                    else if(msgType.equals("stop_ga")){
-//                        this.msgTypeStopGa(msgContents);
-//                    }
-////                    else if (msgType.equals("ping")) {
-////                        this.msgTypePing(msgContents);
-////                    }
-////                    else if (msgType.equals("reset")) {
-////                        this.msgTypeReset(msgContents);
-////                    }
-//                    else if(msgType.equals("exit")){
-//                        System.out.println("----> Exiting gracefully");
-//                        this.running = false;
-//                    }
-//                }
-//                else{
-//                    System.out.println("-----> INCOMING MESSAGE DIDN'T HAVE ATTRIBUTE: msgType");
-//                    // this.consumerSleep(10);
-//                }
-//            }
-//            if (!connectionMessages.isEmpty()) {
-//                this.deleteMessages(connectionMessages, this.requestQueueUrl);
-//            }
-//            if (!userMessages.isEmpty()) {
-//                this.deleteMessages(userMessages, this.userRequestQueueUrl);
-//            }
-
-
-//            if (this.pendingReset) {
-//                this.currentState = State.READY;
-//                this.userRequestQueueUrl = null;
-//                this.userResponseQueueUrl = null;
-//                this.pendingReset = false;
-//            }
-//            counter++;
         }
-        this.sendExitMessage();
         this.closePingThread();
         if(System.getenv("DEPLOYMENT_TYPE").equals("AWS")){
             this.stopInstance();
@@ -305,26 +178,26 @@ public class Consumer implements Runnable {
     private void sendReadyStatus(){
         this.currentState = State.READY;
         Map<String, String> status_message = new HashMap<>();
-        status_message.put("STATUS", "READY");
-        status_message.put("PROBLEM_ID", "-----");
-        status_message.put("GROUP_ID", "-----");
-        status_message.put("DATASET_ID", "-----");
+        JsonObject message = new JsonObject();
+        message.addProperty("STATUS", "READY");
+        status_message.put("controller", this.gson.toJson(message));
         this.pingConsumerQueue.add(status_message);
     }
 
-    private void sendRunningStatus(int groupId, int problemId){
+    private void sendPingStatus(){
         Map<String, String> status_message = new HashMap<>();
-        status_message.put("STATUS", "RUNNING");
-        status_message.put("PROBLEM_ID", String.valueOf(problemId));
-        status_message.put("GROUP_ID", String.valueOf(groupId));
-        status_message.put("DATASET_ID", "-----");
+        JsonObject message = new JsonObject();
+        message.addProperty("STATUS", "RUNNING");
+        status_message.put("controller", this.gson.toJson(message));
         this.pingConsumerQueue.add(status_message);
     }
 
     private void closePingThread(){
         System.out.println("--> CLOSING PING THREAD");
         Map<String, String> status_message = new HashMap<>();
-        status_message.put("msgType", "stop");
+        JsonObject message = new JsonObject();
+        message.addProperty("exit", "true");
+        status_message.put("controller", "exit");
         this.pingConsumerQueue.add(status_message);
 
         try{
@@ -336,18 +209,15 @@ public class Consumer implements Runnable {
     }
 
 
+//     __  __                                       _    _                    _  _  _
+//    |  \/  |                                     | |  | |                  | || |(_)
+//    | \  / |  ___  ___  ___   __ _   __ _   ___  | |__| |  __ _  _ __    __| || | _  _ __    __ _
+//    | |\/| | / _ \/ __|/ __| / _` | / _` | / _ \ |  __  | / _` || '_ \  / _` || || || '_ \  / _` |
+//    | |  | ||  __/\__ \\__ \| (_| || (_| ||  __/ | |  | || (_| || | | || (_| || || || | | || (_| |
+//    |_|  |_| \___||___/|___/ \__,_| \__, | \___| |_|  |_| \__,_||_| |_| \__,_||_||_||_| |_| \__, |
+//                                     __/ |                                                   __/ |
+//                                    |___/                                                   |___/
 
-
-//     __  __                                  _______
-//    |  \/  |                                |__   __|
-//    | \  / | ___  ___ ___  __ _  __ _  ___     | |_   _ _ __   ___  ___
-//    | |\/| |/ _ \/ __/ __|/ _` |/ _` |/ _ \    | | | | | '_ \ / _ \/ __|
-//    | |  | |  __/\__ \__ \ (_| | (_| |  __/    | | |_| | |_) |  __/\__ \
-//    |_|  |_|\___||___/___/\__,_|\__, |\___|    |_|\__, | .__/ \___||___/
-//                                 __/ |             __/ | |
-//                                |___/             |___/|_|
-
-    // --> CHECK MESSAGES
     private List<Message> checkPrivateQueue(){
         List<Message> brainMessages = new ArrayList<>();
         if(this.privateRequestUrl != null){
@@ -356,8 +226,6 @@ public class Consumer implements Runnable {
         }
         return brainMessages;
     }
-
-    // --> RECEIVE
     private boolean isMessageAllowed(Map<String, String> msgContents) {
         String msgType = msgContents.get("msgType");
         List<String> allowedTypes = new ArrayList<>();
@@ -371,145 +239,6 @@ public class Consumer implements Runnable {
         }
         return allowedTypes.contains(msgType);
     }
-
-    private void msgTypeStartGa(Map<String, String> msgContents, String runType) {
-        String maxEvals  = msgContents.get("maxEvals");
-        String crossoverProbability  = msgContents.get("crossoverProbability");
-        String mutationProbability   = msgContents.get("mutationProbability");
-        int groupId  = Integer.parseInt(msgContents.get("group_id"));
-        int problemId  = Integer.parseInt(msgContents.get("problem_id"));
-        int datasetId  = Integer.parseInt(msgContents.get("dataset_id"));
-        String testedFeature = msgContents.getOrDefault("tested_feature", "");
-        int maxSeconds = Integer.parseInt(msgContents.getOrDefault("max_seconds", "0"));
-
-        System.out.println("\n-------------------- ALGORITHM REQUEST --------------------");
-        System.out.println("---------------> MAX EVALS: " + maxEvals);
-        System.out.println("---> CROSSOVER PROBABILITY: " + crossoverProbability);
-        System.out.println("----> MUTATION PROBABILITY: " + mutationProbability);
-        System.out.println("----------------> RUN TYPE: " + runType);
-        System.out.println("----------------> GROUP ID: " + groupId);
-        System.out.println("--------------> PROBLEM ID: " + problemId);
-        System.out.println("--------------> DATASET ID: " + datasetId);
-        System.out.println("--------------> APOLLO URL: " + this.apolloUrl);
-        System.out.println("--------> VASSAR QUEUE URL: " + this.vassarRequestQueueUrl);
-        System.out.println("----------------------------------------------------------\n");
-        //this.consumerSleep(3);
-
-        this.sendRunningStatus(groupId, problemId);
-        
-        OkHttpClient http   = new OkHttpClient.Builder()
-                .connectTimeout(600, TimeUnit.SECONDS)
-                .readTimeout(600, TimeUnit.SECONDS)
-                .writeTimeout(600, TimeUnit.SECONDS)
-                .callTimeout(600, TimeUnit.SECONDS)
-                .addInterceptor(new Interceptor() {
-                    @NotNull
-                    @Override
-                    public okhttp3.Response intercept(@NotNull Interceptor.Chain chain) throws IOException {
-                        Request original = chain.request();
-                        Request request = original.newBuilder()
-                                .header("X-Hasura-Admin-Secret", "daphne")
-                                .method(original.method(), original.body())
-                                .build();
-
-                        return chain.proceed(request);
-                    }
-                })
-                .build();
-        ApolloClient apollo = ApolloClient.builder().serverUrl(this.apolloUrl).okHttpClient(http).build();
-        
-        SqsClientBuilder sqsClientBuilder = SqsClient.builder().region(Region.US_EAST_2);
-        final SqsClient sqsClient = sqsClientBuilder.build();
-
-        RunType gaRunType = null;
-        if (runType.equals("interactive")) {
-            gaRunType = RunType.INTERACTIVE;
-        }
-        else if (runType.equals("bulk")) {
-            gaRunType = RunType.BULK;
-        }
-        
-        GAThread process = new GAThread.Builder(this.privateResponseUrl, this.vassarRequestQueueUrl)
-                .setSqsClient(sqsClient)
-                .setGroupId(groupId)
-                .setProblemId(problemId)
-                .setDatasetId(datasetId)
-                .setApolloClient(apollo)
-                .setMaxEvals(Integer.parseInt(maxEvals))
-                .setMaxSeconds(maxSeconds)
-                .setCrossoverProbability(Double.parseDouble(crossoverProbability))
-                .setMutationProbability(Double.parseDouble(mutationProbability))
-                .setRunType(gaRunType)
-                .setPingConsumerQueue(this.pingConsumerQueue)
-                .setTestedFeature(testedFeature)
-                .setPrivateQueue(this.privateQueue)
-                .getProblemData(problemId, datasetId)
-                .build();
-
-        // RUN CONSUMER
-        if (this.gaThread != null && this.gaThread.isAlive()) {
-            try {
-                this.privateQueue.add("{ \"type\": \"stop\" }");
-                this.gaThread.join();
-            }
-            catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        }
-        this.privateQueue.clear();
-        this.gaThread = new Thread(process);
-        this.gaThread.start();
-        this.currentState = State.RUNNING;
-    }
-
-    private void msgTypeApplyFeature(Map<String, String> msgContents) {
-        System.out.println("---> APPLYING FEATURE");
-        
-        if (this.gaThread != null && this.gaThread.isAlive()) {
-            this.privateQueue.add("{ \"type\": \"exploreFeature\", \"feature\": \"" + msgContents.get("tested_feature") + "\" }");
-        }
-    }
-
-    private int msgTypeStopGa(Map<String, String> msgContents) {
-        System.out.println("---> STOPPING GA");
-
-        if (this.gaThread != null && this.gaThread.isAlive()) {
-            this.privateQueue.add("{ \"type\": \"stop\" }");
-            this.currentState = State.READY;
-            return 0;
-        }
-        return 1;
-    }
-
-
-    // --> SEND
-    public void sendExitMessage(){
-        final Map<String, MessageAttributeValue> messageAttributes = new HashMap<>();
-        messageAttributes.put("msgType",
-                MessageAttributeValue.builder()
-                        .dataType("String")
-                        .stringValue("exit")
-                        .build()
-        );
-        messageAttributes.put("status",
-                MessageAttributeValue.builder()
-                        .dataType("String")
-                        .stringValue("finished")
-                        .build()
-        );
-        this.sqsClient.sendMessage(SendMessageRequest.builder()
-                .queueUrl(this.privateResponseUrl)
-                .messageBody("ga_message")
-                .messageAttributes(messageAttributes)
-                .delaySeconds(0)
-                .build());
-    }
-
-
-
-
-    // ---> MESSAGE FLOW
-    // 1.
     private List<Message> getMessages(String queueUrl, int maxMessages, int waitTimeSeconds){
         ReceiveMessageRequest receiveMessageRequest = ReceiveMessageRequest.builder()
                 .queueUrl(queueUrl)
@@ -537,8 +266,6 @@ public class Consumer implements Runnable {
         });
         return messages;
     }
-
-    // 2.
     private List<Message> handleMessages(String queueUrl, List<Message> messages) {
         List<Message> processedMessages = new ArrayList<>();
         for (Message msg: messages) {
@@ -558,8 +285,6 @@ public class Consumer implements Runnable {
         }
         return processedMessages;
     }
-
-    // 3.
     public HashMap<String, String> processMessage(Message msg, boolean printInfo){
         HashMap<String, String> contents = new HashMap<>();
         contents.put("body", msg.body());
@@ -577,21 +302,166 @@ public class Consumer implements Runnable {
         // this.consumerSleep(5);
         return contents;
     }
-
-    // 4.
     private void deleteMessages(List<Message> messages, String queueUrl) {
         for (Message message : messages) {
             DeleteMessageRequest deleteMessageRequest = DeleteMessageRequest.builder()
-            .queueUrl(queueUrl)
-            .receiptHandle(message.receiptHandle())
-            .build();
+                    .queueUrl(queueUrl)
+                    .receiptHandle(message.receiptHandle())
+                    .build();
             this.sqsClient.deleteMessage(deleteMessageRequest);
         }
     }
 
 
 
-    // --> AWS
+//     __  __                                  _______
+//    |  \/  |                                |__   __|
+//    | \  / | ___  ___ ___  __ _  __ _  ___     | |_   _ _ __   ___  ___
+//    | |\/| |/ _ \/ __/ __|/ _` |/ _` |/ _ \    | | | | | '_ \ / _ \/ __|
+//    | |  | |  __/\__ \__ \ (_| | (_| |  __/    | | |_| | |_) |  __/\__ \
+//    |_|  |_|\___||___/___/\__,_|\__, |\___|    |_|\__, | .__/ \___||___/
+//                                 __/ |             __/ | |
+//                                |___/             |___/|_|
+
+
+    // ---------------
+    // --- RECEIVE ---
+    // ---------------
+
+    private int msgTypeStopGa(Map<String, String> msgContents) {
+        System.out.println("---> STOPPING GA");
+        String gaId = msgContents.get("ga_id");
+        
+        if(this.gaThreadPool.containsKey(gaId)){
+            Thread gaThread = this.gaThreadPool.get(gaId);
+            if (gaThread != null && gaThread.isAlive()) {
+                if(this.privateQueuePool.containsKey(gaId)){
+                    System.out.println("--> SENDING STOP GA MESSAGE INTERNAL");
+                    this.privateQueuePool.get(gaId).offer("stop");
+                }
+            }
+        }
+        else{
+            System.out.println("--> ERROR, GA THREAD DOES NOT EXIST IN POOL FOR: " + gaId);
+        }
+        this.sendExitMessage(gaId);
+        return 1;
+    }
+
+    private void msgTypeStartGa(Map<String, String> msgContents){
+
+        // --> 1. Get run parameters / pring
+        String maxEvals  = msgContents.get("maxEvals");
+        String crossoverProbability  = msgContents.get("crossoverProbability");
+        String mutationProbability   = msgContents.get("mutationProbability");
+        int problemId  = Integer.parseInt(msgContents.get("problem_id"));
+        int datasetId  = Integer.parseInt(msgContents.get("dataset_id"));
+        int userId = Integer.parseInt(msgContents.get("user_id"));
+        int initialPopSize = Integer.parseInt(msgContents.get("initialPopSize"));
+        String gaId = msgContents.get("ga_id");
+        List<Integer> objective_ids = this.parseObjectiveIds(msgContents.get("objective_ids"));
+
+        System.out.println("\n-------------------- ALGORITHM REQUEST --------------------");
+        System.out.println("---------------> MAX EVALS: " + maxEvals);
+        System.out.println("-------------------> GA ID: " + gaId);
+        System.out.println("----------> OBJECTIVE IDS : " + msgContents.get("objective_ids"));
+        System.out.println("---> CROSSOVER PROBABILITY: " + crossoverProbability);
+        System.out.println("----> MUTATION PROBABILITY: " + mutationProbability);
+        System.out.println("--------------> PROBLEM ID: " + problemId);
+        System.out.println("--------------> DATASET ID: " + datasetId);
+        System.out.println("--------------> APOLLO URL: " + System.getenv("APOLLO_URL"));
+        System.out.println("----------> EVAL QUEUE URL: " + System.getenv("EVAL_REQUEST_URL"));
+        System.out.println("----------------------------------------------------------\n");
+
+
+
+        // --> 2. Delete current GA with gaId if exists
+        this.stopGaThread(gaId);
+
+        // --> 3. Create new ga thread
+        ConcurrentLinkedQueue<String> gaQueue = new ConcurrentLinkedQueue<>();
+
+        HashMap<String, String> gaParameters = new HashMap<>();
+        gaParameters.put("maxEvals", maxEvals);
+        gaParameters.put("popSize", String.valueOf(initialPopSize));
+        gaParameters.put("crossoverProbability", crossoverProbability);
+        gaParameters.put("mutationProbability", mutationProbability);
+
+        DatabaseAPI databaseAPI = new DatabaseAPI(userId, problemId, datasetId, gaId, objective_ids);
+
+        CometGA process = new CometGA(databaseAPI, gaParameters, gaQueue, this.pingConsumerQueue);
+
+        Thread gaThread = new Thread(process);
+        gaThread.start();
+
+        this.privateQueuePool.put(gaId, gaQueue);
+        this.gaThreadPool.put(gaId, gaThread);
+
+        this.currentState = State.RUNNING;
+
+        this.sendPingStatus();
+    }
+
+
+
+    // ------------
+    // --- SEND ---
+    // ------------
+
+    public void sendExitMessage(String gaId){
+        final Map<String, MessageAttributeValue> messageAttributes = new HashMap<>();
+        messageAttributes.put("msgType",
+                MessageAttributeValue.builder()
+                        .dataType("String")
+                        .stringValue("exit")
+                        .build()
+        );
+        messageAttributes.put("gaId",
+                MessageAttributeValue.builder()
+                        .dataType("String")
+                        .stringValue(gaId)
+                        .build()
+        );
+        this.sqsClient.sendMessage(SendMessageRequest.builder()
+                .queueUrl(this.privateResponseUrl)
+                .messageBody("ga_message")
+                .messageAttributes(messageAttributes)
+                .delaySeconds(0)
+                .build());
+    }
+
+    public void sendRunningMessage(String gaId){
+        final Map<String, MessageAttributeValue> messageAttributes = new HashMap<>();
+        messageAttributes.put("msgType",
+                MessageAttributeValue.builder()
+                        .dataType("String")
+                        .stringValue("running")
+                        .build()
+        );
+        messageAttributes.put("gaId",
+                MessageAttributeValue.builder()
+                        .dataType("String")
+                        .stringValue(gaId)
+                        .build()
+        );
+        this.sqsClient.sendMessage(SendMessageRequest.builder()
+                .queueUrl(this.privateResponseUrl)
+                .messageBody("ga_message")
+                .messageAttributes(messageAttributes)
+                .delaySeconds(0)
+                .build());
+    }
+
+
+
+
+    // ---> MESSAGE FLOW
+
+
+    // --------------------
+    // --- EC2 SERVICES ---
+    // --------------------
+
     private void stopInstance(){
 
         // --> 1. Get instance id
@@ -621,4 +491,42 @@ public class Consumer implements Runnable {
             System.out.println("--> ERROR STOPPING INSTANCE, COULD NOT GET ID");
         }
     }
+
+
+    // ---------------
+    // --- HELPERS ---
+    // ---------------
+
+    private List<Integer> parseObjectiveIds(String array){
+        ArrayList<Integer> result = new ArrayList<>();
+        String substr = array.substring(1, array.length()-1);
+        List<String> items = Arrays.asList(substr.split("\\s*,\\s*"));
+        for(String item: items){
+            result.add(Integer.parseInt(item));
+        }
+        return result;
+    }
+
+    private void stopGaThread(String gaId){
+        if(this.privateQueuePool.containsKey(gaId)){
+            // --> Stop current thread(gaId) if exists
+            ConcurrentLinkedQueue<String> thread_queue = this.privateQueuePool.get(gaId);
+            if(this.gaThreadPool.containsKey(gaId) && this.gaThreadPool.get(gaId) != null && this.gaThreadPool.get(gaId).isAlive()){
+                Thread curr_thread = this.gaThreadPool.get(gaId);
+                try {
+                    thread_queue.add("{ \"type\": \"stop\" }");
+                    curr_thread.join();
+                }
+                catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+            this.gaThreadPool.remove(gaId);
+            this.privateQueuePool.remove(gaId);
+        }
+    }
+
+
+
 }
+

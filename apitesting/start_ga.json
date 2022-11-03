@@ -18,17 +18,29 @@
       "DataType": "String",
       "StringValue": "0.016666"
     },
-    "group_id": {
-      "DataType": "String",
-      "StringValue": "1"
-    },
     "problem_id": {
       "DataType": "String",
       "StringValue": "1"
     },
     "dataset_id": {
       "DataType": "String",
+      "StringValue": "1"
+    },
+    "user_id": {
+      "DataType": "String",
       "StringValue": "133"
+    },
+    "initialPopSize": {
+      "DataType": "String",
+      "StringValue": "133"
+    },
+    "ga_id": {
+      "DataType": "String",
+      "StringValue": "133"
+    },
+    "objective_ids": {
+      "DataType": "String",
+      "StringValue": "[6, 8]"
     }
   }
 }
