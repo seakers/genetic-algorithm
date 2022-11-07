@@ -101,7 +101,7 @@ public class PingConsumer implements Runnable {
 
 
     private boolean update_status() {
-        if(!this.mainConsumerQueue.isEmpty()) {
+        while(!this.mainConsumerQueue.isEmpty()) {
             Map<String, String> msgContents = this.mainConsumerQueue.poll();
 
             // --> CONTAINER STOP CONDITION
@@ -111,16 +111,14 @@ public class PingConsumer implements Runnable {
                 }
             }
 
-            // --> GA STOP CONDITION
+            // --> GA STOP / UPDATE STATUS
             for(String key: msgContents.keySet()){
                 if(msgContents.get(key).equals("exit")){
                     this.statusStore.remove(key);
                 }
-            }
-
-            // --> UPDATE STATUS STORE
-            for(String key: msgContents.keySet()){
-                this.statusStore.put(key, msgContents.get(key));
+                else{
+                    this.statusStore.put(key, msgContents.get(key));
+                }
             }
         }
         return true;

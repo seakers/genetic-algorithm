@@ -1,4 +1,4 @@
-# Design Evaluator
+# Comet Algorithm
 
 
 ## AWS Deployment

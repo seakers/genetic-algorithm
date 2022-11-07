@@ -28,7 +28,7 @@
     },
     "user_id": {
       "DataType": "String",
-      "StringValue": "30"
+      "StringValue": "18"
     },
     "initialPopSize": {
       "DataType": "String",
@@ -36,11 +36,11 @@
     },
     "ga_id": {
       "DataType": "String",
-      "StringValue": "GA-TEST"
+      "StringValue": "GA-TEST-2"
     },
     "objective_ids": {
       "DataType": "String",
-      "StringValue": "[6, 7, 9, 10, 8]"
+      "StringValue": "[6, 8, 9]"
     }
   }
 }

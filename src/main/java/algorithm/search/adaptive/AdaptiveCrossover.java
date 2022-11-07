@@ -1,6 +1,5 @@
-package algorithm.search.operators;
+package algorithm.search.adaptive;
 
-import algorithm.search.problems.Adaptive.AdaptiveArchitecture;
 import database.DatabaseAPI;
 import org.moeaframework.core.Solution;
 import org.moeaframework.core.Variation;

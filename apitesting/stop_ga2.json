@@ -8,7 +8,7 @@
     },
     "ga_id": {
       "DataType": "String",
-      "StringValue": "GA-TEST"
+      "StringValue": "GA-TEST-2"
     }
   }
 }

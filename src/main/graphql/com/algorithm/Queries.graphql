@@ -1,36 +1,5 @@
 
 
-# , distinct_on: representation
-
-query InitialPopulationQuery($problem_id: bigint!, $dataset_id: bigint!, $objective_ids: [bigint!]) {
-    items: comet_problem_architecture(where: {problem_id: {_eq: $problem_id}, dataset_id: {_eq: $dataset_id}}) {
-        id
-        evaluation_status
-        origin
-        representation
-        objective: comet_problem_objectivevalues(where: {objective_id: {_in: $objective_ids}}) {
-            value
-            objective_info: comet_problem_objective {
-                name
-                type
-            }
-        }
-    }
-}
-
-
-
-query GaDatasetQuery($problem_id: bigint!) {
-    items: comet_problem_dataset(where: {problem_id: {_eq: $problem_id}, name: {_eq: "_ga"}}) {
-        id
-        name
-    }
-}
-
-
-
-
-
 query ProblemObjectivesQuery($problem_id: bigint!, $objective_ids: [bigint!]) {
     items: comet_problem_objective(where: {problem_id: {_eq: $problem_id}, id: {_in: $objective_ids}}, order_by: [{id: asc}]) {
         id
@@ -56,14 +25,39 @@ query ProblemDecisionsQuery($problem_id: bigint!) {
 }
 
 
-query SingleArchitectureQuery($problem_id: bigint!, $objective_ids: [bigint!], $representation: String!){
+query GaDatasetQuery($problem_id: bigint!) {
+    items: comet_problem_dataset(where: {problem_id: {_eq: $problem_id}, name: {_eq: "_ga"}}) {
+        id
+        name
+    }
+}
+
+
+query InitialPopulationQuery($problem_id: bigint!, $dataset_id: bigint!, $objective_ids: [bigint!]) {
+    items: comet_problem_architecture(where: {problem_id: {_eq: $problem_id}, dataset_id: {_eq: $dataset_id}}) {
+        id
+        evaluation_status
+        origin
+        representation
+        objective: comet_problem_objectivevalues(where: {objective_id: {_in: $objective_ids}}) {
+            value
+            objective_info: comet_problem_objective {
+                name
+                type
+            }
+        }
+    }
+}
+
+
+query SingleArchitectureQuery($problem_id: bigint!, $representation: String!){
     items: comet_problem_architecture(where: {problem_id: {_eq: $problem_id}, representation: {_eq: $representation}}) {
         id
         evaluation_status
         origin
         representation
         dataset_id
-        objective: comet_problem_objectivevalues(where: {objective_id: {_in: $objective_ids}}) {
+        objective: comet_problem_objectivevalues {
             value
             id
             objective_id
@@ -76,13 +70,35 @@ query SingleArchitectureQuery($problem_id: bigint!, $objective_ids: [bigint!], $
     }
 }
 
+query DoesDesignExistQuery($problem_id: bigint!, $representation: String!, $dataset_id: bigint!){
+    result: comet_problem_architecture_aggregate(where: {dataset_id: {_eq: $dataset_id}, representation: {_eq: $representation}, problem_id: {_eq: $problem_id}}) {
+        aggregate {
+            count
+        }
+    }
+}
+
+
+
+
+
+
+
+
+
 mutation CopyArchitectureMutation($problem_id: bigint!, $user_dataset_id: bigint!,  $evaluation_status: Boolean!, $origin: String!, $user_info_id: bigint!, $representation: String!, $objective_values: [comet_problem_objectivevalue_insert_input!]!){
     items: insert_comet_problem_architecture_one(object: {dataset_id: $user_dataset_id, evaluation_status: $evaluation_status, origin: $origin, problem_id: $problem_id, representation: $representation, user_information_id: $user_info_id, comet_problem_objectivevalues: {data: $objective_values}}) {
         id
     }
 }
 
-
+mutation CopyArchitectureBatchMutation($architectures: [comet_problem_architecture_insert_input!]!) {
+    items: insert_comet_problem_architecture(objects: $architectures) {
+        returning {
+            id
+        }
+    }
+}
 
 
 

@@ -7,7 +7,9 @@ package database;
  */
 
 
+import algorithm.search.adaptive.AdaptiveArchitecture;
 import com.algorithm.*;
+import com.algorithm.type.Comet_problem_architecture_insert_input;
 import com.algorithm.type.Comet_problem_objectivevalue_insert_input;
 import com.apollographql.apollo.ApolloCall;
 import com.apollographql.apollo.ApolloClient;
@@ -91,6 +93,17 @@ public class DatabaseAPI {
         return 0;
     }
 
+    public int getGaDatasetId(){
+        GaDatasetQuery query = GaDatasetQuery.builder()
+                .problem_id(this.problem_id)
+                .build();
+        ApolloCall<GaDatasetQuery.Data> apolloCall = this.apollo.query(query);
+        Observable<Response<GaDatasetQuery.Data>> observable  = Rx2Apollo.from(apolloCall);
+        BigDecimal id = (BigDecimal) observable.blockingFirst().getData().items().get(0).id();
+        return id.intValue();
+    }
+
+
 
     public List<ProblemDecisionsQuery.Item> getProblemDecisions(){
         ProblemDecisionsQuery query = ProblemDecisionsQuery.builder()
@@ -125,13 +138,14 @@ public class DatabaseAPI {
     public List<SingleArchitectureQuery.Item> getArchitecture(String representation){
         SingleArchitectureQuery query = SingleArchitectureQuery.builder()
                 .problem_id(this.problem_id)
-                .objective_ids(this.objective_ids)
                 .representation(representation)
                 .build();
         ApolloCall<SingleArchitectureQuery.Data> apolloCall = this.apollo.query(query);
         Observable<Response<SingleArchitectureQuery.Data>> observable  = Rx2Apollo.from(apolloCall);
         return observable.blockingFirst().getData().items();
     }
+
+
 
 
 
@@ -158,7 +172,7 @@ public class DatabaseAPI {
         return ((BigDecimal) observable.blockingFirst().getData().items().id()).intValue();
     }
 
-    private ArrayList<Comet_problem_objectivevalue_insert_input> cloneArchObjectives(SingleArchitectureQuery.Item arch){
+    public ArrayList<Comet_problem_objectivevalue_insert_input> cloneArchObjectives(SingleArchitectureQuery.Item arch){
         ArrayList<Comet_problem_objectivevalue_insert_input> new_objectives = new ArrayList<>();
         for(SingleArchitectureQuery.Objective objective: arch.objective()){
             Comet_problem_objectivevalue_insert_input new_objective = Comet_problem_objectivevalue_insert_input.builder()
@@ -172,23 +186,40 @@ public class DatabaseAPI {
     }
 
 
-    public int getGaDatasetId(){
-        GaDatasetQuery query = GaDatasetQuery.builder()
+
+
+
+
+
+
+    public boolean doesUserDesignExist(String representation){
+        DoesDesignExistQuery query = DoesDesignExistQuery.builder()
                 .problem_id(this.problem_id)
+                .representation(representation)
+                .dataset_id(this.user_dataset_id)
                 .build();
-        ApolloCall<GaDatasetQuery.Data> apolloCall = this.apollo.query(query);
-        Observable<Response<GaDatasetQuery.Data>> observable  = Rx2Apollo.from(apolloCall);
-        BigDecimal id = (BigDecimal) observable.blockingFirst().getData().items().get(0).id();
-        return id.intValue();
+        ApolloCall<DoesDesignExistQuery.Data> apolloCall = this.apollo.query(query);
+        Observable<Response<DoesDesignExistQuery.Data>> observable  = Rx2Apollo.from(apolloCall);
+        return (observable.blockingFirst().getData().result().aggregate().count() > 0);
     }
 
 
 
 
 
+    public CopyArchitectureBatchMutation.Items syncBatchArchitectures(ArrayList<AdaptiveArchitecture> architectures){
+        ArrayList<Comet_problem_architecture_insert_input> db_archs = new ArrayList<>();
+        for(AdaptiveArchitecture arch: architectures){
+            db_archs.add(arch.getArchitectureSyncObject());
+        }
 
-
-
+        CopyArchitectureBatchMutation mutation = CopyArchitectureBatchMutation.builder()
+                .architectures(db_archs)
+                .build();
+        ApolloCall<CopyArchitectureBatchMutation.Data> apolloCall = this.apollo.mutate(mutation);
+        Observable<Response<CopyArchitectureBatchMutation.Data>> observable  = Rx2Apollo.from(apolloCall);
+        return observable.blockingFirst().getData().items();
+    }
 
 
 

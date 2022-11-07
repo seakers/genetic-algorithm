@@ -143,9 +143,9 @@ public class Consumer implements Runnable {
             counter++;
         }
         this.closePingThread();
-        if(System.getenv("DEPLOYMENT_TYPE").equals("AWS")){
-            this.stopInstance();
-        }
+//        if(System.getenv("DEPLOYMENT_TYPE").equals("AWS")){
+//            this.stopInstance();
+//        }
     }
 
 
@@ -369,6 +369,7 @@ public class Consumer implements Runnable {
         System.out.println("----> MUTATION PROBABILITY: " + mutationProbability);
         System.out.println("--------------> PROBLEM ID: " + problemId);
         System.out.println("--------------> DATASET ID: " + datasetId);
+        System.out.println("--------> INITIAL POP SIZE: " + initialPopSize);
         System.out.println("--------------> APOLLO URL: " + System.getenv("APOLLO_URL"));
         System.out.println("----------> EVAL QUEUE URL: " + System.getenv("EVAL_REQUEST_URL"));
         System.out.println("----------------------------------------------------------\n");
